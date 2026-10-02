@@ -93,6 +93,8 @@ async function buildPull(nDays) {
       blocks: d.blocks.slice().sort((a, b) => a.start - b.start).map(b => blk(cfg, b)) });
   }
   const week = X.weekDays(S, cfg, t, t);
+  // the picks lottery, same draw as the app (in memory: lines the app has not drawn yet)
+  const pickCfg = X.clone(cfg); [X.weekStart(t), X.addDays(X.weekStart(t), 7)].forEach(ws => X.autoPicks(pickCfg, S, A.tf, ws, t));
   const out = {
     now: { date: t, day: X.DOW[X.dow(t)], time: X.hm(new Date().getHours() * 60 + new Date().getMinutes()) },
     settings: { gridStart: X.hm(cfg.settings.dayStart), bedtime: X.hm(cfg.settings.bedtime), buffer: pct(cfg.settings.buffer), balanceTarget: cfg.settings.balance },
@@ -104,7 +106,7 @@ async function buildPull(nDays) {
     nonGoals: cfg.items.filter(i => !i.deleted && (i.kind === 'dream' || i.kind === 'fun')).map(i => { const ago = X.lastDone(S, i, t); return i.title + ' [' + (i.kind === 'dream' ? 'dream' : i.cat) + (i.kind === 'dream' ? ', ' + i.min + 'm' : '') + (i.needs ? ', needs ' + i.needs : '') + ', ' + X.durTxt(X.hoursDone(S, i)) + ' done' + (ago == null ? '' : ', last ' + ago + 'd ago') + ']'; }),
     boredomList: cfg.boredom,
     // this week's and next week's picks; no time = Saarthi has to place it
-    weekPicks: [X.weekStart(t), X.addDays(X.weekStart(t), 7)].flatMap(ws => Object.entries((cfg.weekPlans || {})[ws] || {}).map(([k, v]) => (X.WEEK_SLOTS[k] || { label: k }).label + ': ' + v.text + ' [week of ' + ws + ', ' + (v.date || 'any day') + ', ' + (v.start != null ? X.hm(v.start) : 'NO TIME, place it') + ', ' + v.dur + 'm' + (v.itemId ? ', itemId ' + v.itemId : '') + (v.cat ? ', cat ' + v.cat : '') + ']')),
+    weekPicks: [X.weekStart(t), X.addDays(X.weekStart(t), 7)].flatMap(ws => Object.entries((pickCfg.weekPlans || {})[ws] || {}).filter(([, v]) => v && v.text).map(([k, v]) => (X.WEEK_SLOTS[k] || { label: k }).label + ': ' + v.text + ' [week of ' + ws + ', ' + (v.date || 'any day') + ', ' + (v.start != null ? X.hm(v.start) : 'NO TIME, place it') + ', ' + v.dur + 'm' + (v.itemId ? ', itemId ' + v.itemId : '') + (v.cat ? ', cat ' + v.cat : '') + ']')),
     thisWeekBalance: X.balanceState(cfg, week).rows.map(r => r.cat + ' ' + pct(r.share) + ' (target ' + pct(r.target) + ')'),
     report7: brief(X.rangeReport(cfg, S, X.addDays(t, -6), t), cfg),
     report28: brief(X.rangeReport(cfg, S, X.addDays(t, -27), t), cfg),

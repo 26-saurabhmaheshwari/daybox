@@ -263,6 +263,26 @@ t('ops: editItem renames a bank item, removeItem deletes it', () => {
   assert(X.applyOp(m, { days: {} }, { type: 'editItem', title: 'nope', patch: {} }, TODAY).error);
   X.applyOp(m, { days: {} }, { type: 'removeItem', title: 'painting & mandala' }, TODAY); assert(m.items[0].deleted);
 });
+t('picks lottery: fixed per week, no repeats across lines, cooldown, keeps hand-set lines, reroll changes one', () => {
+  const m = X.seedConfig(); m.weekPlans = {};
+  m.items = ['Trek', 'Picnic', 'Fort', 'Lake'].map((t, i) => ({ id: 'l' + i, kind: 'fun', title: t, cat: 'leisure', min: i < 2 ? 240 : 45 })).concat({ id: 's0', kind: 'fun', title: 'Journal', cat: 'self' });
+  const ws = X.addDays(X.weekStart(TODAY), 7), st = { days: {} };
+  const a = X.clone(m), b = X.clone(m);
+  X.autoPicks(a, st, null, ws, TODAY); X.autoPicks(b, st, null, ws, TODAY);
+  assert.strictEqual(JSON.stringify(a.weekPlans[ws]), JSON.stringify(b.weekPlans[ws]), 'same week, same draw');
+  const wp = a.weekPlans[ws];
+  assert(wp.big && wp.little && wp.self); assert.notStrictEqual(wp.big.itemId, wp.little.itemId); assert.strictEqual(wp.self.text, 'Journal');
+  assert.strictEqual(wp.big.dur, 240); assert(['l0', 'l1'].includes(wp.big.itemId) && ['l2', 'l3'].includes(wp.little.itemId), 'big = long ones, little = short'); assert(wp.big.auto && wp.big.start == null);
+  // hand-set line stays
+  a.weekPlans[ws].little = { text: 'Lake', itemId: 'l3', cat: 'leisure', date: null, start: null, dur: 45 };
+  assert(!X.autoPicks(a, st, null, ws, TODAY)); assert.strictEqual(a.weekPlans[ws].little.text, 'Lake');
+  // reroll changes only that line
+  const before = a.weekPlans[ws].big.itemId; assert(X.rerollPick(a, st, null, ws, 'big', TODAY)); assert.notStrictEqual(a.weekPlans[ws].big.itemId, before); assert.strictEqual(a.weekPlans[ws].little.text, 'Lake');
+  // cooldown: what was picked last week is not drawn this week
+  const ws2 = X.addDays(ws, 7); X.autoPicks(a, st, null, ws2, TODAY);
+  const last = new Set(Object.values(a.weekPlans[ws]).map(v => v.itemId));
+  ['big', 'little'].forEach(k => { const v = a.weekPlans[ws2][k]; if (v) assert(!last.has(v.itemId), k + ' repeats ' + v.text); });
+});
 t('my-routine.json loads', () => {
   if (!fs.existsSync(__dirname + '/my-routine.json')) return;
   const o = JSON.parse(read('my-routine.json')); const m = X.mergeConfig(o.config);

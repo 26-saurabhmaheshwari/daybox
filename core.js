@@ -234,6 +234,86 @@ function weekItemsFor(cfg, date) {
     return { wk: k, title: v.itemId ? v.text : m.label + ': ' + v.text, cat: v.cat || m.cat, start: v.start, dur: v.dur || m.dur, attach: [], itemId: v.itemId || null };
   });
 }
+/* ---------- picks lottery: random, tilted toward what you need ---------- */
+// what each line draws from: the lists you already keep
+function pickPool(cfg, tf, k) {
+  const by = f => cfg.items.filter(i => !i.deleted && f(i)).map(i => ({ id: 'item:' + i.id, itemId: i.id, title: i.title, cat: i.cat, item: i }));
+  if (k === 'career') return tfGoals(cfg, tf).filter(g => !(+g.target) || g.left > 0).map(g => ({ id: 'tf:' + g.id, itemId: 'tf:' + g.id, title: g.name, cat: g.cat, leftMin: g.leftMin, chunk: g.chunk }))
+    .concat(by(i => i.kind === 'regular'));
+  if (k === 'relationship') return by(i => i.cat === 'family').concat(by(i => i.kind === 'dream' && i.cat !== 'family'));
+  if (k === 'self') return by(i => i.kind === 'fun' && (i.cat === 'self' || i.cat === 'hobby'));
+  // Big = things of 2h or more (half day), Little = shorter ones; an item without a length counts as short
+  const adv = i => i.kind === 'dream' || (i.kind === 'fun' && i.cat === 'leisure');
+  if (k === 'big') return by(i => adv(i) && (+i.min || 0) >= 120);
+  if (k === 'little') return by(i => adv(i) && (+i.min || 60) < 120);
+  return [];
+}
+const hashStr = s => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
+const seeded = seed => () => { seed = (seed + 0x6D2B79F5) >>> 0; let t = seed; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+const PICK_DUR = { career: 60, relationship: 60, self: 30, big: 180, little: 60 };
+/* draw one line. Tickets: more the longer since you did it, more if its category is behind your balance,
+   none if picked in the last 2 weeks or already taken by another line. Career takes the nugget with most time left. */
+function drawPick(cfg, store, tf, ws, k, today, taken, roll) {
+  const pool = pickPool(cfg, tf, k).filter(o => !taken.has(o.id));
+  if (!pool.length) return null;
+  // it has to fit the week: Big adventure a free 3h on Sat or Sun, the rest a free hour on some day still ahead
+  const need = k === 'big' ? 120 : 30, s = cfg.settings;
+  const days = (k === 'big' ? [5, 6] : [0, 1, 2, 3, 4, 5, 6]).map(i => addDays(ws, i)).filter(dt => dt > today || (k !== 'big' && dt === today));
+  if (!days.some(dt => gaps(getDay(store, cfg, dt, today).blocks.filter(live), s.dayStart, s.bedtime, need).length)) return null;
+  if (k === 'career') {
+    const tfs = pool.filter(o => o.id.startsWith('tf:')).sort((a, b) => (b.leftMin || 0) - (a.leftMin || 0));
+    const o = tfs.length ? tfs[(roll || 0) % tfs.length] : pool[Math.floor(seeded(hashStr(ws + k + (roll || 0)))() * pool.length)];
+    return { text: o.title, itemId: o.itemId, cat: o.cat, dur: o.chunk || PICK_DUR.career };
+  }
+  const recent = new Set();
+  [-7, -14].forEach(n => Object.values((cfg.weekPlans || {})[addDays(ws, n)] || {}).forEach(v => { if (v && v.itemId) recent.add(String(v.itemId)); }));
+  const def = {}; balanceState(cfg, weekDays(store, cfg, ws, today)).rows.forEach(r => { def[r.cat] = r.deficit; });
+  const w = pool.map(o => {
+    if (recent.has(String(o.itemId))) return 0;
+    const ago = lastDone(store, o.item, today);
+    return Math.min(3, ago == null ? 3 : 1 + ago / 7) * (1 + 2 * (def[o.cat] || 0));
+  });
+  const sum = w.reduce((a, b) => a + b, 0);
+  if (!sum) return null;
+  let r = seeded(hashStr(ws + k + (roll || 0)))() * sum, i = 0;
+  while (r >= w[i]) r -= w[i++];
+  const o = pool[i];
+  return { text: o.title, itemId: o.itemId, cat: o.cat, dur: +o.item.min ? clamp(+o.item.min, 20, 360) : PICK_DUR[k] };
+}
+/* fill the lines of week `ws` that are not set yet. Keeps what you set by hand, skipped lines and earlier draws.
+   Returns true when something changed. */
+function autoPicks(cfg, store, tf, ws, today) {
+  const wp = Object.assign({}, (cfg.weekPlans || {})[ws] || {}), taken = new Set();
+  Object.values(wp).forEach(v => { if (v && v.itemId) taken.add(String(v.itemId).startsWith('tf:') ? v.itemId : 'item:' + v.itemId); });
+  let changed = false;
+  Object.keys(PICK_DUR).forEach(k => {
+    const v = wp[k];
+    if (v && (v.skip || v.text)) {
+      // a drawn pick whose item is gone gets drawn again
+      if (!(v.auto && v.itemId && !String(v.itemId).startsWith('tf:') && !cfg.items.some(i => i.id === v.itemId && !i.deleted))) return;
+    }
+    const p = drawPick(cfg, store, tf, ws, k, today, taken, v && v.roll);
+    if (!p) { if (v) { delete wp[k]; changed = true; } return; }
+    wp[k] = Object.assign({ date: null, start: null, auto: true, roll: (v && v.roll) || 0 }, p);
+    taken.add(String(p.itemId).startsWith('tf:') ? p.itemId : 'item:' + p.itemId);
+    changed = true;
+  });
+  if (changed) { cfg.weekPlans = cfg.weekPlans || {}; cfg.weekPlans[ws] = wp; }
+  return changed;
+}
+/* ↻ on one line: draw again (a new roll), keeping the other lines */
+function rerollPick(cfg, store, tf, ws, k, today) {
+  const wp = (cfg.weekPlans || {})[ws] || {}, v = wp[k] || {}, taken = new Set();
+  Object.keys(wp).forEach(j => { const x = wp[j]; if (j !== k && x && x.itemId) taken.add(String(x.itemId).startsWith('tf:') ? x.itemId : 'item:' + x.itemId); });
+  if (v.itemId) taken.add(String(v.itemId).startsWith('tf:') ? v.itemId : 'item:' + v.itemId); // not the same one again
+  const roll = (v.roll || 0) + 1;
+  let p = drawPick(cfg, store, tf, ws, k, today, taken, roll);
+  if (!p && v.itemId) p = drawPick(cfg, store, tf, ws, k, today, new Set([...taken].filter(x => !x.endsWith(String(v.itemId).replace(/^tf:/, '')))), roll);
+  if (!p) return false;
+  cfg.weekPlans = cfg.weekPlans || {};
+  cfg.weekPlans[ws] = Object.assign({}, wp, { [k]: Object.assign({ date: null, start: null, auto: true, roll }, p) });
+  return true;
+}
 /* ---------- no overlaps: helpers ---------- */
 const overlaps = (a, b) => a.start < b.start + b.dur && b.start < a.start + a.dur;
 function clashWith(blocks, cand, ignoreId) {
@@ -832,7 +912,7 @@ root.DBX = {
   pad, dkey, parseKey, addDays, dow, weekStart, hm, toMin, durTxt, hrs, clamp, clone, uid, DOW, norm, zoneOf,
   seedConfig, mergeConfig, migrateTemplates, catOf, liveCats, isSleep, isWaste, freeCats, addCat, deleteCat, catUse, SEED_CATS, SEED_TYPES, FIXED_TYPES, liveTypes, typeOf, addType, deleteType, SHUTDOWN, WEEK_SLOTS,
   overlaps, clashWith, carve, ruleClash, makeRoom, backupSlot,
-  activeRules, templateFor, attachObjs, blockFrom, weekItemsFor, buildDay, getDay, planSnapshot, lockIfDue, resetDay,
+  activeRules, templateFor, attachObjs, blockFrom, weekItemsFor, pickPool, drawPick, autoPicks, rerollPick, buildDay, getDay, planSnapshot, lockIfDue, resetDay,
   editRule, endRule, deleteRule, ruleLive, lanes, live, intervals, unionMin, gaps,
   tfGoals, tfCatId, ensureTfCats, candidates, matches, lastDone, hoursDone, funMin, weekDays, itemCount, balanceState, suggest, backupOffers, useBackup, fillDay, placeBlock,
   missedYesterday, principleChecks, actualMin, dayStats, trackedDays, rangeReport, direction, streaks,

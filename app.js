@@ -75,6 +75,14 @@ addEventListener('pagehide', flush);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
 function saveCfg() { CFG.updated = Date.now(); put(LS_CFG, CFG); markDirty('cfg'); }
 function syncTfCats() { if (CLOUD_OK && TF && X.ensureTfCats(CFG, TF).length) saveCfg(); }
+/* the picks lottery: this week, and next week from Friday on (so Sunday's week plan can place them) */
+function ensurePicks(ws) {
+  if (!CLOUD_OK) return false;
+  const t = today(), list = ws ? [ws] : [weekStart(t)].concat(dow(t) === 0 || dow(t) >= 5 ? [addDays(weekStart(t), 7)] : []);
+  let ch = false; list.forEach(w => { if (w >= weekStart(t) && X.autoPicks(CFG, STORE, TF, w, t)) ch = true; });
+  if (ch) saveCfg();
+  return ch;
+}
 function saveDay(d, auto) {
   d.virtual = false; delete d.untracked;
   X.lockIfDue(d, today());
@@ -93,6 +101,7 @@ function setSync(state, msg) { SYNC = { state, msg: msg || '' }; renderSync(); }
 
 document.addEventListener('dbx-auth', e => {
   AUTH = e.detail || { signedIn: false };
+  if (!AUTH.signedIn) { CLOUD_OK = true; ensurePicks(); } // this device only: nothing to wait for
   setSync(AUTH.signedIn ? 'loading' : 'local');
   if (VIEW === 'settings' || VIEW === 'saarthi') render(); else renderNav();
 });
@@ -104,7 +113,7 @@ document.addEventListener('dbx-cloud', e => {
   if (m.pushConfig) markDirty('cfg');
   m.pushDays.forEach(markDirty);
   if (e.detail && 'inbox' in e.detail) INBOX = e.detail.inbox || null;
-  CLOUD_OK = true; syncTfCats();
+  CLOUD_OK = true; syncTfCats(); ensurePicks();
   ensureToday();
   setSync('ok');
   if (!e.detail || !e.detail.live || m.changed) { if (DRAGGING) setTimeout(render, 400); else render(); }
@@ -801,6 +810,7 @@ function balanceBars(rows, title) {
   return '<div class="card"><h3>' + title + '</h3>' + rows.map(r => { const c = catOf(CFG, r.cat); return '<div class="hbar" style="--c:' + c.color + '"><span>' + esc(c.name) + '</span><div class="track"><i style="width:' + Math.round(r.share * 100) + '%"></i><b style="left:' + Math.round(r.target * 100) + '%" title="target"></b></div><span class="mono small">' + Math.round(r.share * 100) + '% / ' + Math.round(r.target * 100) + '%</span></div>'; }).join('') + '<p class="hint" style="margin:8px 0 0">Bar = your share of free time this week (planned + done). Line = your target.</p></div>';
 }
 function viewWeek() {
+  ensurePicks(WEEK);
   const t = today(), dates = [0, 1, 2, 3, 4, 5, 6].map(i => addDays(WEEK, i)), days = dates.map(day);
   days.forEach((d, i) => { RENDERED[dates[i]] = d; });
   const bal = X.balanceState(CFG, days);
@@ -845,7 +855,9 @@ function picksCard(ws) {
     const known = src.some(([, list]) => list.some(o => o[0] === sel));
     const pick = known || sel === '' ? sel : 'other';
     const dsel = v.text ? (v.date || '') : dates[def[0]], st = v.text ? v.start : def[1], du = v.dur || m.dur;
-    return '<div class="pk" data-k="' + k + '" style="--c:' + catOf(CFG, m.cat).color + '"><div class="pk-h"><span class="chip"><i></i>' + m.label + '</span><span class="muted small">' + (PLAN_HINT[k] || 'From an older plan.') + '</span></div>'
+    const tag = v.skip ? '<span class="chip">skipped this week</span>' : v.auto ? '<span class="chip pk-auto" title="Drawn by DayBox">drawn</span>' : v.text ? '<span class="chip">yours</span>' : '';
+    const ctl = k === 'younight' ? '' : '<span class="pk-ctl"><button type="button" class="btn ghost sm" data-act="pkroll" data-k="' + k + '" title="Draw another" aria-label="Draw another">↻</button>' + (v.skip ? '' : '<button type="button" class="btn ghost sm" data-act="pkskip" data-k="' + k + '" title="Skip this week" aria-label="Skip this week">×</button>') + '</span>';
+    return '<div class="pk' + (v.skip ? ' off' : '') + '" data-k="' + k + '" style="--c:' + catOf(CFG, m.cat).color + '"><div class="pk-h"><span class="chip"><i></i>' + m.label + '</span>' + tag + '<span class="muted small" style="flex:1">' + (PLAN_HINT[k] || 'From an older plan.') + '</span>' + ctl + '</div>'
       + '<div class="pk-row"><select data-f="pick"><option value="">Not this week</option>' + src.filter(([, l]) => l.length).map(([g, l]) => '<optgroup label="' + esc(g) + '">' + l.map(o => '<option value="' + esc(o[0]) + '"' + (o[0] === pick ? ' selected' : '') + '>' + esc(o[1]) + '</option>').join('') + '</optgroup>').join('') + '<option value="other"' + (pick === 'other' ? ' selected' : '') + '>Something else...</option></select>'
       + '<input type="text" data-f="text" placeholder="What?" value="' + esc(pick === 'other' ? v.text || '' : '') + '"' + (pick === 'other' ? '' : ' hidden') + '>'
       + '<select data-f="date"><option value="">Any day</option>' + dates.map(dd => '<option value="' + dd + '"' + (dd === dsel ? ' selected' : '') + (dd < t ? ' disabled' : '') + '>' + fmtShort(dd) + '</option>').join('') + '</select>'
@@ -853,7 +865,7 @@ function picksCard(ws) {
       + '<select data-f="dur">' + (DURS.includes(du) ? DURS : DURS.concat(du).sort((a, b) => a - b)).map(x => '<option value="' + x + '"' + (x === du ? ' selected' : '') + '>' + durTxt(x) + '</option>').join('') + '</select></div></div>';
   }).join('');
   return '<div class="card picks" id="picks" data-ws="' + ws + '"><div class="row" style="margin-bottom:6px"><h3 style="margin:0;flex:1">Picks for this week</h3><button class="btn pri sm" data-act="plansave">Save picks</button></div>'
-    + '<p class="hint" style="margin:0 0 10px">Pick from your lists, so the hours count there. No day or time: Saarthi\'s week plan finds the slot first.</p>' + rows + '</div>';
+    + '<p class="hint" style="margin:0 0 10px">DayBox draws each line from your lists: random, but what you did least lately and what is behind your balance get more chances, and nothing repeats within 2 weeks. ↻ draws another, × skips it, or pick one yourself. No day or time: Saarthi\'s week plan finds the slot.</p>' + rows + '</div>';
 }
 function savePlan() {
   const box = $('#picks'); if (!box) return;
@@ -861,12 +873,14 @@ function savePlan() {
   const find = v => { for (const k of Object.keys(L)) for (const [, l] of pickSources(k)) { const o = l.find(x => x[0] === v); if (o) return o; } return null; };
   for (const c of $$('.pk[data-k]', box)) {
     const g = f => c.querySelector('[data-f="' + f + '"]').value, pick = g('pick'), k = c.dataset.k;
-    if (!pick) continue;
+    if (!pick) { if (k !== 'younight') wp[k] = { skip: true }; continue; } // "Not this week" = skipped, so it is not drawn again
     let text, itemId = null, cat = null;
     if (pick === 'other') { text = g('text').trim(); if (!text) continue; }
     else { const o = find(pick); if (!o) continue; text = o[1]; cat = o[2]; itemId = pick.startsWith('tf:') ? pick : pick.slice(5); }
     const date = g('date') || null, sv = g('start');
     wp[k] = { text, itemId, cat, date, start: date && sv ? toMin(sv) : null, dur: +g('dur') };
+    const old = (CFG.weekPlans[ws] || {})[k]; // an untouched draw stays a draw
+    if (old && old.auto && String(old.itemId) === String(itemId)) Object.assign(wp[k], { auto: true, roll: old.roll || 0 });
   }
   const base = Object.assign({}, CFG, { weekPlans: {} });
   for (const k of Object.keys(wp)) {
@@ -1445,6 +1459,8 @@ const ACTS = {
   tab: a => { TAB[a.dataset.g] = a.dataset.k; render(); },
   item: a => openItem(a.dataset.id, a.dataset.kind),
   planit: a => planIt(a.dataset.id),
+  pkroll: a => { const ws = $('#picks').dataset.ws; if (X.rerollPick(CFG, STORE, TF, ws, a.dataset.k, today())) { saveCfg(); render(); } else toast('Nothing else to draw for ' + X.WEEK_SLOTS[a.dataset.k].label + '. Add more to its list.'); },
+  pkskip: a => { const ws = $('#picks').dataset.ws, wp = CFG.weekPlans[ws] = CFG.weekPlans[ws] || {}; wp[a.dataset.k] = { skip: true }; saveCfg(); render(); },
   boredsave: () => { CFG.boredom = $('#boredTxt').value.split('\n').map(x => x.trim()).filter(Boolean); saveCfg(); toast('Saved'); },
   plansave: savePlan,
   rule: a => openRule(a.dataset.id),
