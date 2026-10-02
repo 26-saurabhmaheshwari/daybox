@@ -131,12 +131,24 @@ function pickIds(inbox, arg) {
 }
 
 async function propose(file) { await proposeObj(JSON.parse(fs.readFileSync(file, 'utf8'))); }
+/* Claude sometimes writes an op loosely: {"moveBlock": {...}}, {"op": "moveBlock", ...}, or the type next to "op". Put it in the one shape. */
+const OP_TYPES = ['addBlock', 'moveBlock', 'removeBlock', 'setStatus', 'addTodo', 'removeTodo', 'addRule', 'editRule', 'addItem', 'editItem', 'removeItem', 'setBalance', 'setChunk', 'setNugget'];
+function normOp(o) {
+  if (!o || typeof o !== 'object') return o;
+  if (!o.op && o.type) { o.op = Object.assign({}, o); delete o.op.label; delete o.op.why; }
+  if (typeof o.op === 'string') o.op = Object.assign({ type: o.op }, o.args || o.params || {});
+  if (o.op && !o.op.type) {
+    if (o.type && OP_TYPES.includes(o.type)) o.op.type = o.type;
+    else { const k = Object.keys(o.op).find(x => OP_TYPES.includes(x)); if (k) o.op = Object.assign({ type: k }, o.op[k]); }
+  }
+  return o;
+}
 /* check ops in order on a copy; `today` may be edited (setStatus for what you did), other past days not */
 function checkOps(A, ops, t) {
   const cfg = X.clone(A.cfg), store = { days: X.clone(A.store.days) }, errs = [], keep = [];
-  // a nugget's chunk is its longest sitting: never a longer block (by title or itemId)
-  const nug = A.tf ? X.tfGoals(A.cfg, A.tf) : [];
-  const tooLong = (title, itemId, dur) => { const g = nug.find(x => (itemId && itemId === 'tf:' + x.id) || X.norm(x.name) === X.norm(title) || X.norm(x.name + ' · ' + x.mini) === X.norm(title)); return g && dur > g.chunk ? '"' + title + '" is ' + dur + ' min, its chunk (longest sitting) is ' + g.chunk + ' min' : null; };
+  ops.forEach(normOp);
+  // a nugget's chunk is its longest sitting: never a longer block (by title or itemId). Read from the copy, so a setChunk earlier in the same batch counts.
+  const tooLong = (title, itemId, dur) => { const g = (A.tf ? X.tfGoals(cfg, A.tf) : []).find(x => (itemId && itemId === 'tf:' + x.id) || X.norm(x.name) === X.norm(title) || X.norm(x.name + ' · ' + x.mini) === X.norm(title)); return g && dur > g.chunk ? '"' + title + '" is ' + dur + ' min, its chunk (longest sitting) is ' + g.chunk + ' min' : null; };
   ops.forEach((o, i) => {
     let e = null;
     if (!o.op || !o.label) e = 'needs label + op';
@@ -252,6 +264,7 @@ async function planWeek(dry) {
   const t = today(), out = await buildPull(14), A0 = await loadAll(await getUid()), r = weekRange(t, A0.cfg);
   const p = await askClaude(weekPrompt(out, r));
   p.title = 'Week plan ' + r.from.slice(5) + ' to ' + r.to.slice(5);
+  (p.ops || []).forEach(normOp);
   (p.ops || []).forEach(o => { if (o.op && (o.op.type !== 'addBlock' || !o.op.date || o.op.date < r.from || o.op.date > r.to)) o.op = null; });
   if (!dry) {
     const n = await proposeObj(p, { lenient: true, kind: 'week' });
@@ -300,7 +313,9 @@ function movePrompt(out, a, errs) {
     'Block: "' + a.title + '" on ' + a.date + ' at ' + X.hm(a.start) + ', ' + a.dur + ' min' + (a.cat ? ', category ' + a.cat : '') + '.',
     POSSIBLE,
     'Pick the earliest slot after it where it is free (see DATA.days freeGaps) AND possible; later the same day first, else the next days (up to 7). Keep its length unless only a little shorter fits (never under 2/3).',
-    'Same day: one op moveBlock {date, title, at: its current start, start}. Another day: two ops, removeBlock {date, title, at} then addBlock {date: new day, block:{start, dur, title, cat}}. Minutes from midnight.',
+    'Same day: one op moveBlock. Another day: two ops, removeBlock then addBlock. Minutes from midnight. Exact shape, "type" inside "op":',
+    'same day: {"label":"Move: Walk alone Sat 18:30","why":"...","op":{"type":"moveBlock","date":"' + a.date + '","title":"' + a.title + '","at":' + a.start + ',"start":1110}}',
+    'other day: {"label":"...","why":"...","op":{"type":"removeBlock","date":"' + a.date + '","title":"' + a.title + '","at":' + a.start + '}} then {"label":"...","why":"...","op":{"type":"addBlock","date":"YYYY-MM-DD","block":{"start":420,"dur":' + a.dur + ',"title":"' + a.title + '","cat":"' + (a.cat || '') + '"}}}',
     'label = "Move: title Day HH:MM", why = one short line on why that slot (and why not earlier ones). summary = one line for the user.',
     errs ? 'Your last answer failed these checks, fix them:\n' + errs : '',
     'Reply with ONLY the proposal JSON object ({"title","summary","ops"}). No prose, no code fence. Do not use tools.',
