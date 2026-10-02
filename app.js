@@ -419,7 +419,7 @@ function fitHtml(d) {
   const todos = d.todo || [];
   const open = todos.filter(x => !x.done && !blockOf(d, x));
   const needMin = open.reduce((a, x) => a + (x.min || 30), 0);
-  let h = '<div class="fitbox"><div class="fb-h"><div><h3>To fit ' + (d.date === t ? 'today' : fmtShort(d.date)) + '</h3><span class="fb-sub">' + Math.min(FIT_MAX, todos.length) + ' of ' + FIT_MAX + ' · ' + durTxt(freeMin) + ' free</span></div>'
+  let h = '<div class="fitbox"><div class="fb-h"><div><h3>To fit</h3><span class="fb-sub">' + durTxt(freeMin) + ' free</span></div>'
     + (todos.length < FIT_MAX ? '<button type="button" class="fb-add" data-act="fitnew" title="Add a task" aria-label="Add a task">' + ic('plus') + '</button>' : '') + '</div>';
   if (needMin > freeMin * (1 - s.buffer) && open.length) h += '<div class="fb-warn">' + durTxt(needMin) + ' to fit, only ' + durTxt(freeMin) + ' free. Keep what matters.</div>';
   h += todos.map(x => {
