@@ -184,8 +184,8 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 .ck-c.span2{grid-column:span 2}
 .ck-t.cont{font-weight:600;opacity:.75}
 .ck-c.empty:hover{background:var(--accent-soft)}
-.ck-c.st-up,.ck-c.st-now{background:var(--k)}
-.ck-c.st-done{background:color-mix(in srgb,var(--k) 22%,var(--surface));color:color-mix(in srgb,var(--k) 60%,var(--ink))}
+.ck-c.st-up,.ck-c.st-now{background:linear-gradient(90deg,var(--k) 0%,color-mix(in srgb,var(--k) 55%,var(--surface)) 100%)}
+.ck-c.st-done{background:var(--k);color:#fff}
 .ck-c.st-mark{background:repeating-linear-gradient(135deg,var(--k) 0 6px,color-mix(in srgb,var(--k) 72%,#fff) 6px 12px)}
 .ck-c.st-skip{background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);color:var(--faint);text-decoration:line-through}
 .ck-c.st-past{background:color-mix(in srgb,var(--k) 38%,var(--surface));color:var(--ink)}
@@ -198,7 +198,7 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 .ck-m{flex:none;font-size:.68rem;font-weight:600;opacity:.8;font-variant-numeric:tabular-nums}
 .ck-i{flex:none;margin-left:auto;width:17px;height:17px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.92);color:var(--k);font-style:normal;font-size:.62rem;font-weight:900}
 .ck-c.st-mark .ck-i{color:var(--mark)}
-.ck-c.st-done .ck-i{background:var(--k);color:#fff}
+.ck-c.st-done .ck-i{background:#fff;color:var(--k)}
 .legend{display:flex;gap:6px;flex-wrap:wrap}
 .qbtns{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 /* ---------- Today: morning / afternoon / evening ---------- */
@@ -274,11 +274,14 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 /* ---------- day header: arrows + date, green progress of the same width ---------- */
 .dnav{display:inline-flex;flex-direction:column;gap:6px;width:min(360px,100%);font-family:var(--f-body)}
 .dn-row{display:flex;align-items:center;gap:4px}
-.dn-a{width:30px;height:30px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--muted);display:grid;place-items:center;cursor:pointer;flex:none}
+.dn-a{width:26px;height:26px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--muted);display:grid;place-items:center;cursor:pointer;flex:none}
 .dn-a svg{width:15px;height:15px}
 .dn-a:hover{color:var(--accent);border-color:var(--accent)}
-.dn-mid{flex:1;border:0;background:none;font:inherit;font-size:1.12rem;font-weight:800;letter-spacing:-.01em;color:var(--ink);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px}
+.dn-mid{flex:1;border:0;background:none;font:inherit;font-size:.95rem;font-weight:700;letter-spacing:-.01em;color:var(--ink);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:3px 8px;border-radius:8px}
 .dn-mid:hover{color:var(--accent)}
+.dnav.off .dn-mid{flex:none;background:var(--mark-bg);color:var(--mark)}
+.dnav.off .dn-mid:hover{filter:brightness(.97)}
+.dnav{width:auto}
 /* ---------- task cards (To fit) ---------- */
 .fitbox{display:flex;flex-direction:column}
 .fb-h{margin:2px 2px 10px}
@@ -506,7 +509,7 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 <div id="ov" hidden><div id="sheet" role="dialog" aria-modal="true"></div></div>
 <div id="toast" hidden></div>
 <div id="printArea"></div>
-<script src="core.js?v=37"></script>
-<script src="app.js?v=37"></script>
+<script src="core.js?v=38"></script>
+<script src="app.js?v=38"></script>
 </body>
 </html>

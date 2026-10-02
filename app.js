@@ -674,8 +674,8 @@ function viewToday() {
   const yday = DAYS[addDays(CUR, -1)];
   // one date with arrows, and a green bar of the same width: blocks done out of the day's blocks
   const dd0 = X.parseKey(CUR), dateTxt = DOWL[dd0.getDay()] + ', ' + dd0.getDate() + ' ' + MON[dd0.getMonth()];
-  const dnav = '<span class="dnav"><span class="dn-row"><button type="button" class="dn-a" data-act="prev" aria-label="Previous day">' + ic('left') + '</button>'
-    + '<button type="button" class="dn-mid" data-act="gotoday" title="' + (isToday ? 'Today' : 'Back to today') + '">' + (isToday ? 'Today · ' : '') + dateTxt + '</button>'
+  const dnav = '<span class="dnav' + (isToday ? '' : ' off') + '"><span class="dn-row"><button type="button" class="dn-a" data-act="prev" aria-label="Previous day">' + ic('left') + '</button>'
+    + '<button type="button" class="dn-mid" data-act="gotoday" title="' + (isToday ? 'Today' : 'Not today. Tap to go back to today') + '">' + dateTxt + '</button>'
     + '<button type="button" class="dn-a" data-act="next" aria-label="Next day">' + ic('right') + '</button></span></span>';
   const actions = '<button class="btn" data-act="print" aria-label="Print" title="Print">' + ic('print') + '</button>'
     + (CUR <= t ? '<button class="btn pri" data-act="close">Close day</button>' : '');
