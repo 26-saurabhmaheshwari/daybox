@@ -163,6 +163,7 @@ async function proposeObj(p, opt) {
   const recent = Date.now() - 2 * 86400e3; // decided ones stay 2 days, so Saarthi sees what you rejected
   const prev = old ? old.ops.map(o => Object.assign({ req: 'r_old' }, o)).filter(o => o.state === 'pending' ? !(kind === 'week' && kindOf(o) === 'week') : (o.decidedAt || 0) > recent) : [];
   const req = { id: 'r' + Date.now(), kind, at: Date.now(), title: p.title || 'Saarthi suggestions', summary: p.summary || '', tips: p.tips || [] };
+  LAST_REQ = req.id;
   if (opt.text) req.text = String(opt.text).slice(0, 500);
   const ops = prev.concat(keep.map(o => ({ label: o.label, why: o.why || '', op: o.op, state: 'pending', req: req.id }))).map((o, i) => Object.assign(o, { id: 'o' + (i + 1) }));
   const reqs = oldReqs.filter(r => ops.some(o => o.req === r.id)).concat(req);
@@ -188,9 +189,18 @@ function findClaude() {
   return found[0].f;
 }
 // the coaching rules + op format live in the /saarthi command (sections 3 and 4): one source of truth
+// real life: an activity has to be possible when you put it there
+const POSSIBLE = 'Only put an activity where it can really happen: outdoor things (walks, gardening, bird watching, outdoor play, picnics) in daylight; the kids only when they are home and awake; partner time when the partner is free (evenings, weekends); calls to parents not late at night; temples, shops, melas and outings in their opening hours; long or far things (drives, picnics, new places, relatives) on weekends or free days; deep work (study, nuggets) in the hours the user keeps, never right after a long event; quiet things (journaling, phone-off) in the evening. Respect an item\'s days / zone / from-to when given. Never on top of work (Office) or pillars.';
 function saarthiRules() {
   try { const m = fs.readFileSync(path.join(os.homedir(), '.claude', 'commands', 'saarthi.md'), 'utf8'); const a = m.indexOf('## 3.'), b = m.indexOf('## 5.'); if (a > 0 && b > a) return m.slice(a, b); } catch (e) {}
   return 'Op types: addTodo {date, todo:{title,min,cat}} · addBlock {date, block:{start,dur,title,cat}} (start/dur in minutes from midnight).';
+}
+let LAST_REQ = null; // the request id proposeObj made last, for auto-apply
+async function applyReq(reqId) {
+  const s = await db.doc('planner/' + (await getUid()) + '/meta/inbox').get(), ib = s.exists ? s.data() : null;
+  const ids = ((ib && ib.ops) || []).filter(o => o.req === reqId && o.state === 'pending').map(o => o.id);
+  if (ids.length) await decide(ids.join(','), true);
+  return ids.length;
 }
 function askClaude(prompt) {
   return new Promise((res, rej) => {
@@ -213,6 +223,7 @@ function fitPrompt(out, ask) {
   const n = Math.max(1, Math.min(5, ask.slots || 3));
   return ['You are Saarthi, the DayBox time coach. The user tapped + in the Saarthi part of DayBox to get ideas for ' + ask.date + '. The time now is in DATA.now.',
     saarthiRules(),
+    POSSIBLE,
     'Task: propose 1 to ' + n + ' ideas for ' + ask.date + ' that fit its free gaps (from now on, if it is today). Use addTodo (it lands in the To fit list and the user places it), or addBlock only with an exact free start that clashes with nothing.',
     'label = the activity name only, max 4 words. why = one short line with a number from the data. Skip anything already in that day\'s toFit and anything rejected in lastInbox or learnings.',
     'Reply with ONLY the proposal JSON object ({"title","summary","tips","ops"}). No prose, no code fence. Do not use tools.',
@@ -225,6 +236,7 @@ function weekPrompt(out, r) {
     saarthiRules(),
     'Task: look at how this week is going (DATA.days blocks and statuses, regular doneThisWeek vs perWeek, tenfoldGoals minutes left and chunk, thisWeekBalance vs balanceTarget, nonGoals least done lately, weekPlans, skippedByHour, learnings) and fill the free time of each day from ' + r.from + ' to ' + r.to + '.',
     'Rules for this week plan (they replace the max 5 ops rule): only addBlock, up to 3 per day, 15 in total. Each block sits fully inside that day\'s freeGaps and clashes with nothing (also not with your other blocks that day). Leave at least ' + out.settings.buffer + ' of each day free. Deep work (goals, nuggets) in the hours the user keeps (see skippedByHour), light things in the evening. Behind goals and nuggets first, then the balance, then non goals. A nugget uses its chunk minutes; non goals 20-60m. Never touch pillars or recurring blocks. Set mit:true on one block per day only if that day has no MIT yet.',
+    POSSIBLE,
     'weekPicks marked NO TIME come first: place each one in this range (on its day if it has one), with its minutes, title = its text, block.itemId = its itemId, block.cat = its cat. Skip a pick that is already in the blocks of that week.',
     'label = "Day: activity HH:MM" (e.g. "Tue: Spanish 07:30"), max 5 words. why = one short line with a number from the data. summary = one line on how the week is going and what this plan fixes.',
     'Reply with ONLY the proposal JSON object ({"title","summary","tips","ops"}). No prose, no code fence. Do not use tools.',
@@ -235,7 +247,12 @@ async function planWeek(dry) {
   const p = await askClaude(weekPrompt(await buildPull(14), r));
   p.title = 'Week plan ' + r.from.slice(5) + ' to ' + r.to.slice(5);
   (p.ops || []).forEach(o => { if (o.op && (o.op.type !== 'addBlock' || !o.op.date || o.op.date < r.from || o.op.date > r.to)) o.op = null; });
-  if (!dry) return proposeObj(p, { lenient: true, kind: 'week' });
+  if (!dry) {
+    const n = await proposeObj(p, { lenient: true, kind: 'week' });
+    const c = await db.doc('planner/' + (await getUid()) + '/meta/config').get();
+    if (X.mergeConfig(c.exists ? c.data() : null).settings.weekPlanAuto !== false) { await applyReq(LAST_REQ); console.log('Applied the week plan (Settings: fill free time by itself).'); }
+    return n;
+  }
   // dry run: check every op against a copy, write nothing
   const A = await loadAll(await getUid()), cfg = X.clone(A.cfg), store = { days: X.clone(A.store.days) };
   console.log(p.title + '\n' + (p.summary || ''));
@@ -248,6 +265,7 @@ function tellPrompt(out, text, date, errs) {
     saarthiRules(),
     'Request: """' + String(text).slice(0, 500) + '"""',
     'How to read it: "today", "tomorrow", weekday names are relative to DATA.now. Do exactly what was asked; where the user leaves a choice to you ("self block, you decide"), pick from the data (non goals least done lately, To fit, regular behind) and say why. Remove or move whatever the new plan overlaps. Pillars and strict blocks: change them only when the request needs it, and say so in why.',
+    POSSIBLE,
     'Ops are applied in order, each on the result of the ones before. Use only: addBlock {date, block:{start,dur,title,cat,status?,unplanned?}} · moveBlock {date,title,at?,start,dur?} · removeBlock {date,title,at?} · setStatus {date,title,at?,status: done|partial|skipped|planned} · addTodo {date,todo:{title,min,cat}} · removeTodo {date,title} · addItem {item:{kind: regular|dream|fun, title, cat, min?}} · editItem {title, patch:{title?,cat?,min?}} · removeItem {title} (bank lists: hobbies and leisure are kind fun). Minutes from midnight. at = the block\'s current start, needed when two blocks share a title. Only today and later; for things already done today use status done (+ unplanned:true for new ones). Categories: ids from DATA.categories. Day changes are for the days asked only, never the routine; bank ops change your lists.',
     'label = "Day: what HH:MM" (e.g. "Sat: Walk 18:00-21:00"), max 6 words. why = one short line. summary = one line telling the user what you did, in plain words.',
     errs ? 'Your last answer failed these checks, fix them:\n' + errs : '',
@@ -269,6 +287,31 @@ async function tell(text, date, dry) {
   p.title = p.title || 'Your request';
   if (dry) { console.log(p.summary + '\n' + (p.ops || []).map((o, i) => '  ' + (i + 1) + '. ' + o.label + ' - ' + (o.why || '')).join('\n')); return 0; }
   return proposeObj(p, { kind: 'tell', text });
+}
+/* "Move to next good slot" from the block editor: Claude picks the next slot where it can really happen, and it is applied */
+function movePrompt(out, a, errs) {
+  return ['You are Saarthi, the DayBox time coach. The user tapped "Move to next good slot" on a block. Move it to the best next slot. The time now is in DATA.now.',
+    'Block: "' + a.title + '" on ' + a.date + ' at ' + X.hm(a.start) + ', ' + a.dur + ' min' + (a.cat ? ', category ' + a.cat : '') + '.',
+    POSSIBLE,
+    'Pick the earliest slot after it where it is free (see DATA.days freeGaps) AND possible; later the same day first, else the next days (up to 7). Keep its length unless only a little shorter fits (never under 2/3).',
+    'Same day: one op moveBlock {date, title, at: its current start, start}. Another day: two ops, removeBlock {date, title, at} then addBlock {date: new day, block:{start, dur, title, cat}}. Minutes from midnight.',
+    'label = "Move: title Day HH:MM", why = one short line on why that slot (and why not earlier ones). summary = one line for the user.',
+    errs ? 'Your last answer failed these checks, fix them:\n' + errs : '',
+    'Reply with ONLY the proposal JSON object ({"title","summary","ops"}). No prose, no code fence. Do not use tools.',
+    'DATA:\n' + JSON.stringify(out)].filter(Boolean).join('\n\n');
+}
+async function moveSmart(a) {
+  const out = await buildPull(3);
+  let p = await askClaude(movePrompt(out, a)), errs = [];
+  for (let i = 0; i < 2; i++) {
+    errs = checkOps(await loadAll(await getUid()), p.ops || [], today()).errs;
+    if (!errs.length || i) break;
+    p = await askClaude(movePrompt(out, a, errs.join('\n')));
+  }
+  if (errs.length) throw new Error('No good slot found: ' + errs[0]);
+  p.title = p.title || 'Move ' + a.title;
+  await proposeObj(p, { kind: 'move' });
+  return applyReq(LAST_REQ);
 }
 async function watch() {
   const uid = await getUid(), ref = 'planner/' + uid + '/meta/ask';
@@ -296,12 +339,13 @@ async function watch() {
     if (Date.now() - (a.at || 0) > 5 * 60e3) return write(uid, ref, Object.assign({}, a, { state: 'stale' }));
     busy = true;
     const t0 = Date.now(), stamp = () => new Date().toLocaleTimeString();
-    console.log(stamp() + (a.kind === 'week' ? ' week plan' + (a.auto ? ' (nightly)' : '') : a.kind === 'tell' ? ' tell: ' + String(a.text || '').slice(0, 80) : ' asked for ' + a.date + ' (' + (a.slots || '?') + ' slots)'));
+    console.log(stamp() + (a.kind === 'week' ? ' week plan' + (a.auto ? ' (nightly)' : '') : a.kind === 'tell' ? ' tell: ' + String(a.text || '').slice(0, 80) : a.kind === 'move' ? ' move: ' + a.title + ' ' + a.date : ' asked for ' + a.date + ' (' + (a.slots || '?') + ' slots)'));
     try {
       await write(uid, ref, Object.assign({}, a, { state: 'working', pickedAt: Date.now() }));
       let n;
       if (a.kind === 'week') n = await planWeek();
       else if (a.kind === 'tell') n = await tell(a.text, a.date);
+      else if (a.kind === 'move') n = await moveSmart(a);
       else {
         const out = await buildPull(7);
         const p = await askClaude(fitPrompt(out, a));

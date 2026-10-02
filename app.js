@@ -123,7 +123,8 @@ document.addEventListener('dbx-inbox', e => { INBOX = e.detail || null; renderNa
 document.addEventListener('dbx-ask', e => {
   const prev = ASK; ASK = e.detail || null;
   if (ASK && prev && prev.at === ASK.at && prev.state !== ASK.state) {
-    if (ASK.state === 'done' && ASK.kind === 'tell') toast('Saarthi has ' + (ASK.n || 0) + ' change' + (ASK.n === 1 ? '' : 's') + ' for you.', VIEW === 'saarthi' ? null : 'See', () => setView('saarthi'), 9000);
+    if (ASK.state === 'done' && ASK.kind === 'move') toast('Saarthi moved ' + (ASK.title || 'it') + '. Check Saarthi for why.', VIEW === 'saarthi' ? null : 'See', () => setView('saarthi'), 9000);
+    else if (ASK.state === 'done' && ASK.kind === 'tell') toast('Saarthi has ' + (ASK.n || 0) + ' change' + (ASK.n === 1 ? '' : 's') + ' for you.', VIEW === 'saarthi' ? null : 'See', () => setView('saarthi'), 9000);
     else if (ASK.state === 'done') toast(ASK.kind === 'week' ? 'Week plan ready: ' + (ASK.n || 0) + ' blocks to accept in Saarthi.' : 'Saarthi sent ' + (ASK.n || 0) + ' idea' + (ASK.n === 1 ? '' : 's') + '.');
     else if (ASK.state === 'error') toast('Saarthi failed: ' + (ASK.error || 'unknown'), null, null, 9000);
   }
@@ -164,6 +165,21 @@ function setView(v) { if (v === 'plan') v = 'week'; VIEW = VIEWS.some(x => x.id 
 /* ---------- toast + sheet ---------- */
 let toastT = null;
 /* deletes ask first, in a popup: Cancel is the safe default, Delete sits on the other side */
+/* "Move to next good slot": Saarthi (Claude on the PC) picks where it can really happen; without the PC, the next free slot that fits */
+function moveNext(d, b) {
+  if (saAlive() && window.DBXFB && DBXFB.uid) {
+    ASK = { at: Date.now(), kind: 'move', date: d.date, title: b.title, start: b.start, dur: b.dur, cat: b.cat, state: 'asked' }; render();
+    return DBXFB.pushAsk(ASK).then(() => toast('Saarthi is finding the next good slot for ' + b.title + '.')).catch(e => { ASK = null; render(); toast('Could not ask: ' + e.message); });
+  }
+  const item = b.itemId ? CFG.items.find(i => i.id === b.itemId) : CFG.items.find(i => !i.deleted && norm(i.title) === norm(b.title));
+  const n = X.nextSlot(CFG, STORE, b, d.date, today(), nowMin(), item);
+  if (!n) return toast('No free slot for ' + durTxt(b.dur) + ' in the next week.');
+  const before = clone(d), to = n.date === d.date ? d : day(n.date), beforeTo = n.date === d.date ? null : clone(to);
+  if (to === d) b.start = n.start;
+  else { d.blocks = d.blocks.filter(x => x.id !== b.id); to.blocks.push(Object.assign({}, b, { id: uid(), start: n.start, src: b.src === 'rule' ? 'manual' : b.src })); saveDay(d); }
+  sortBlocks(to); saveDay(to); render();
+  toast('Moved ' + b.title + ' to ' + fmtShort(n.date) + ' ' + hm(n.start), 'Undo', () => { saveDay(before); if (beforeTo) saveDay(beforeTo); render(); }, 8000);
+}
 function confirmDel(name, note, fn) {
   openSheet('<div class="sh-h"><h2>Delete ' + esc(name) + '?</h2><button class="iconbtn" data-x aria-label="Close">×</button></div>'
     + (note ? '<p class="hint" style="margin-top:-4px">' + esc(note) + '</p>' : '')
@@ -264,6 +280,7 @@ function openBlock(d, b, preset) {
     + (d ? '<label class="field"><span>Note</span><input id="bNote" type="text" value="' + esc(src.note || '') + '"></label>' : '')
     + (d && !isNew ? '<div class="field"><span>How did it go?</span><div class="stbtns">' + ['done', 'skipped'].map(s => '<button type="button" data-st="' + s + '" class="' + (b.status === s ? 'on' : '') + '">' + { done: 'Done', skipped: 'Skipped' }[s] + '</button>').join('') + '</div></div>' : '')
     + (canBackup ? '<button type="button" class="btn" data-backup>Use backup at ' + hm(bkAt) + '</button>' : '')
+    + (!isNew && d && b.status === 'planned' && !b.pillar && d.date >= t ? '<button type="button" class="btn" data-mv>' + ic('right') + 'Move to next good slot</button>' : '')
     + (isNew && d ? '<label class="check"><input id="bUnpl" type="checkbox"' + (lateNew ? ' checked' : '') + '> Unplanned (this is what really happened)</label>' : '')
     + '<div class="al alert" id="bErr" hidden></div>'
     + '</div><div class="sh-f">' + (!isNew ? (b.src === 'rule' && b.ruleId ? '<button class="btn danger l" data-del>Remove this day only</button><button class="btn danger" data-stop>Stop repeating</button>' : '<button class="btn danger l" data-del>Delete</button>') : '') + '<button class="btn" data-x>Cancel</button><button class="btn pri" data-save>Save</button></div>';
@@ -273,6 +290,8 @@ function openBlock(d, b, preset) {
     $$('[data-st]', sh).forEach(btn => { btn.onclick = () => { status = status === btn.dataset.st ? 'planned' : btn.dataset.st; $$('[data-st]', sh).forEach(x => x.classList.toggle('on', x.dataset.st === status)); }; });
     const bk = $('[data-backup]', sh);
     if (bk) bk.onclick = () => { const at = bkAt; X.useBackup(d, b.id, at); saveDay(d); closeSheet(); render(); toast(b.title + ' moved to backup ' + hm(at)); };
+    const mv = $('[data-mv]', sh);
+    if (mv) mv.onclick = () => { closeSheet(); moveNext(d, b); };
     const stop = $('[data-stop]', sh);
     if (stop) stop.onclick = () => {
       const cfgBefore = clone(CFG), before = clone(d);
@@ -1209,7 +1228,8 @@ function viewSettings() {
     + '<div class="row" style="margin-top:12px"><label class="check"><input type="checkbox" data-s="sound"' + (s.sound ? ' checked' : '') + '> Bell sound when a block starts and ends</label><button class="btn sm" data-act="notify">Allow pop-up alerts</button></div>'
     + '<p class="hint">Alerts only ring while DayBox is open in a tab (or on your phone home screen).</p>'
     + '<div class="row" style="margin-top:12px"><label class="check"><input type="checkbox" id="wpOn"' + (s.weekPlanAt != null ? ' checked' : '') + '> Saarthi plans the rest of the week each night at</label><input type="time" step="900" id="wpAt" value="' + hm(s.weekPlanAt != null ? s.weekPlanAt : 1290) + '"' + (s.weekPlanAt != null ? '' : ' disabled') + '></div>'
-    + '<p class="hint">Runs on your PC while <span class="mono">saarthi.js watch</span> is on. The plan lands in Saarthi for you to accept.</p></div>'
+    + '<div class="row" style="margin-top:6px"><label class="check"><input type="checkbox" id="wpAuto"' + (s.weekPlanAuto !== false ? ' checked' : '') + '> Fill free time by itself (no tap to accept; Undo stays in Saarthi)</label></div>'
+    + '<p class="hint">Runs on your PC while <span class="mono">saarthi.js watch</span> is on.</p></div>'
     + '<div class="card"><h3>Backup</h3><div class="row"><button class="btn" data-act="export">Export backup (JSON)</button><label class="btn">Import backup or routine<input type="file" accept=".json,application/json" id="impFile" hidden></label><button class="btn" data-act="csv">Export CSV</button></div><p class="hint">Import replaces templates, routine, bank and settings, and adds any days in the file. Use it once for <b>my-routine.json</b>.</p></div>'
     + '</div><div>' + typeCard() + catCard()
     + '<div class="card"><h3>About</h3><p class="small" style="margin:0">DayBox v1 · Data: Firebase <span class="mono">planner/</span> (yours only). Tenfold is read, never written.</p></div></div></div>';
@@ -1240,6 +1260,7 @@ function viewSettings() {
       $('#catNew').onkeydown = e => { if (e.key === 'Enter') $('#catAdd').click(); };
       const wpSave = () => { CFG.settings.weekPlanAt = $('#wpOn').checked ? toMin($('#wpAt').value) : null; saveCfg(); render(); };
       $('#wpOn').onchange = wpSave; $('#wpAt').onchange = wpSave;
+      $('#wpAuto').onchange = e => { CFG.settings.weekPlanAuto = e.target.checked; saveCfg(); };
       $('#impFile').onchange = e => { const f = e.target.files[0]; if (f) importFile(f); e.target.value = ''; };
     },
   };

@@ -305,6 +305,23 @@ t('setNugget: chunk kept when via is set, a via nugget is never booked or picked
   assert(!X.candidates(m, tf).some(c => c.id === 'tf:a')); assert.strictEqual(X.pickPool(m, tf, 'career').length, 0);
   assert(X.applyOp(m, { days: {} }, { type: 'setChunk', goal: 'a', chunk: 5 }, TODAY).error);
 });
+t('possible: days, time of day and own hours are hard limits; nextSlot respects them', () => {
+  const it = { days: [0, 6], zone: 'morning', from: 420, to: 720 };
+  const sat = X.addDays(X.weekStart(TODAY), 5), mon = X.weekStart(TODAY);
+  assert(X.possibleAt(it, sat, 480, 60)); assert(!X.possibleAt(it, mon, 480, 60), 'weekday'); assert(!X.possibleAt(it, sat, 400, 30), 'before its hours'); assert(!X.possibleAt(it, sat, 700, 60), 'after');
+  const m = X.seedConfig(); m.rules = []; m.items = [];
+  const b = { id: 'x', start: 1200, dur: 60, title: 'Gardening', cat: 'hobby', status: 'planned' };
+  const st = { days: { [mon]: { date: mon, blocks: [b] } } };
+  const n = X.nextSlot(m, st, b, mon, mon, 0, it);
+  assert.strictEqual(n.date, sat); assert(n.start >= 420 && n.start + 60 <= 720);
+});
+t('ideas: random order, each one once per round, never twice in a row', () => {
+  const r = { title: 'Kids', days: [0, 1, 2, 3, 4, 5, 6], rotate: ['A', 'B', 'C', 'D', 'E'] };
+  let k = X.weekStart(TODAY); const seq = [];
+  for (let i = 0; i < 30; i++, k = X.addDays(k, 1)) seq.push(X.ruleIdea(r, k));
+  for (let i = 1; i < seq.length; i++) assert.notStrictEqual(seq[i], seq[i - 1]);
+  assert.notStrictEqual(seq.slice(0, 5).join(), 'A,B,C,D,E', 'not plain order'); // (a 1-in-120 chance it is)
+});
 t('my-routine.json loads', () => {
   if (!fs.existsSync(__dirname + '/my-routine.json')) return;
   const o = JSON.parse(read('my-routine.json')); const m = X.mergeConfig(o.config);

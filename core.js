@@ -53,7 +53,7 @@ function seedConfig() {
   const cfg = {
     v: 1, updated: 0,
     settings: {
-      dayStart: 360, dayEnd: 1410, bedtime: 1350, buffer: 0.2, sound: true, theme: 'system', weekPlanAt: 1290, // Saarthi plans the week each night (null = off)
+      dayStart: 360, dayEnd: 1410, bedtime: 1350, buffer: 0.2, sound: true, theme: 'system', weekPlanAt: 1290, weekPlanAuto: true, // Saarthi plans the week each night (null = off), and applies it by itself
       balance: { goal: 30, hobby: 15, leisure: 15, family: 25, health: 15 },
     },
     types: clone(SEED_TYPES),
@@ -346,7 +346,17 @@ function ruleIdea(r, date) {
   const n = (r.days || []).filter(d => d >= 0 && d < 7).length || 7;
   // count only the weekdays it repeats on, so a 6-day rule still walks through every idea
   const wk = Math.floor((parseKey(date) - parseKey('2024-01-01')) / (7 * 864e5)), pos = (r.days || []).slice().sort((a, b) => (a + 6) % 7 - (b + 6) % 7).indexOf(dow(date)); // Monday first, like the week
-  return list[(wk * n + Math.max(0, pos)) % list.length];
+  const i = wk * n + Math.max(0, pos), L = list.length;
+  // random order, but fair: each round of L days is a shuffle of the whole list, so every idea gets its day,
+  // and a round never starts with the idea the last one ended on
+  const round = c => {
+    const rnd = seeded(hashStr(r.title + '|' + c)), a = list.slice();
+    for (let j = L - 1; j > 0; j--) { const k = Math.floor(rnd() * (j + 1)); [a[j], a[k]] = [a[k], a[j]]; }
+    return a;
+  };
+  const c = Math.floor(i / L), cur = round(c);
+  if (L > 1 && c > 0 && cur[0] === round(c - 1)[L - 1]) [cur[0], cur[1]] = [cur[1], cur[0]];
+  return cur[i % L];
 }
 function buildDay(cfg, date) {
   const t = templateFor(cfg, date);
@@ -539,6 +549,15 @@ function balanceState(cfg, days) {
 }
 
 /* ---------- "What now?" ---------- */
+/* is an item possible at that time? it.days (weekdays it can happen), it.zone (morning / afternoon / evening),
+   it.from / it.to (its own hours in minutes, e.g. daylight 390-1110 or a temple's opening time) */
+function possibleAt(it, date, start, dur) {
+  if (Array.isArray(it.days) && it.days.length && !it.days.includes(dow(date))) return false;
+  if (it.zone && it.zone !== 'any' && zoneOf(start) !== it.zone) return false;
+  if (it.from != null && start < it.from) return false;
+  if (it.to != null && start + dur > it.to) return false;
+  return true;
+}
 function suggest(cfg, store, tf, date, gap, today, n) {
   n = n || 3;
   const days = weekDays(store, cfg, date, today);
@@ -548,9 +567,11 @@ function suggest(cfg, store, tf, date, gap, today, n) {
   const day = getDay(store, cfg, date, today);
   const scored = [];
   candidates(cfg, tf).forEach(it => {
-    const need = it.kind === 'fun' ? funMin(it, free) : it.kind === 'nugget' && it.leftMin != null ? Math.max(15, Math.min(it.min, Math.ceil(it.leftMin / 5) * 5)) : it.min || 30;
+    if (it.kind === 'fun' && +it.min >= 120) return; // half-day things go through the week's Picks, not a free gap
+    const need = it.kind === 'fun' ? (+it.min || funMin(it, free)) : it.kind === 'nugget' && it.leftMin != null ? Math.max(15, Math.min(it.min, Math.ceil(it.leftMin / 5) * 5)) : it.min || 30;
     if (need > free && !(free >= 25 && free >= need * 0.5)) return;
     const fit = Math.max(15, Math.floor(Math.min(need, free) / 5) * 5);
+    if (!possibleAt(it, date, gap.start, fit)) return; // not possible then (day, time of day, its own hours)
     let s = 0; const why = [];
     if (it.kind === 'regular') {
       const done = itemCount(days, it), per = it.perWeek || 3, planned = itemCount(days, it, ['planned']), behind = Math.max(0, per - done - planned);
@@ -630,6 +651,21 @@ function fillDay(cfg, store, tf, date, today, nowMin) {
   return { day, added };
 }
 
+/* the next slot a block could move to: after it ends today, then the next 7 days; free, long enough and possible then.
+   `item` (its bank item, if any) brings its days / time-of-day / hours. Returns {date, start} or null. */
+function nextSlot(cfg, store, b, date, today, nowM, item) {
+  const s = cfg.settings, it = item || {};
+  for (let i = 0; i < 8; i++) {
+    const k = addDays(date, i); if (k < today) continue;
+    const d = getDay(store, cfg, k, today), others = d.blocks.filter(x => live(x) && x.id !== b.id);
+    let from = i === 0 ? b.start + b.dur : s.dayStart;
+    if (k === today) from = Math.max(from, Math.ceil(nowM / 15) * 15);
+    for (const g of gaps(others, from, s.bedtime, b.dur)) {
+      for (let st = g.start; st + b.dur <= g.end; st += 15) if (possibleAt(it, k, st, b.dur)) return { date: k, start: st };
+    }
+  }
+  return null;
+}
 /* put a task into the first free slot that fits, from `from` until bedtime */
 function placeBlock(cfg, day, item, from) {
   const need = item.min || 30;
@@ -918,7 +954,7 @@ function applyOp(cfg, store, op, today) {
     const it = cfg.items.find(i => !i.deleted && norm(i.title) === norm(op.title));
     if (!it) return { error: 'bank item "' + op.title + '" not found' };
     if (op.type === 'removeItem') it.deleted = true;
-    else { const p = op.patch || {}; ['title', 'cat', 'min', 'perWeek', 'needs', 'zone', 'energy'].forEach(k => { if (p[k] != null) it[k] = p[k]; }); }
+    else { const p = op.patch || {}; ['title', 'cat', 'min', 'perWeek', 'needs', 'zone', 'energy', 'days', 'from', 'to'].forEach(k => { if (p[k] !== undefined) { if (p[k] === null) delete it[k]; else it[k] = p[k]; } }); }
     return { cfg: true };
   }
   if (op.type === 'addItem') { cfg.items.push(Object.assign({ id: uid(), kind: 'dream', min: 30, energy: 'light', zone: 'any' }, op.item)); return { cfg: true }; }
@@ -932,7 +968,7 @@ root.DBX = {
   overlaps, clashWith, carve, ruleClash, makeRoom, backupSlot,
   activeRules, templateFor, attachObjs, blockFrom, ruleIdea, weekItemsFor, pickPool, drawPick, autoPicks, buildDay, getDay, planSnapshot, lockIfDue, resetDay,
   editRule, endRule, deleteRule, ruleLive, lanes, live, intervals, unionMin, gaps,
-  tfGoals, tfCatId, ensureTfCats, candidates, matches, lastDone, hoursDone, funMin, weekDays, itemCount, balanceState, suggest, backupOffers, useBackup, fillDay, placeBlock,
+  tfGoals, tfCatId, ensureTfCats, possibleAt, candidates, matches, lastDone, hoursDone, funMin, weekDays, itemCount, balanceState, suggest, backupOffers, useBackup, fillDay, placeBlock, nextSlot,
   missedYesterday, principleChecks, actualMin, dayStats, trackedDays, rangeReport, direction, streaks,
   dayFeatures, sanyamHabits, sanyamAnalysis, mergeCloud, applyOp,
 };
