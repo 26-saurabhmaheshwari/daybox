@@ -70,7 +70,7 @@ async function loadAll(uid) {
   };
 }
 
-const blk = (cfg, b) => X.hm(b.start) + '-' + X.hm(b.start + b.dur) + ' ' + b.title + ' [' + X.catOf(cfg, b.cat).name + ']' + (b.pillar ? ' PILLAR' : '') + (b.mit ? ' MIT' : '') + (b.status && b.status !== 'planned' ? ' -> ' + b.status : '') + (b.unplanned ? ' (unplanned)' : '') + (b.note ? ' note: ' + b.note : '');
+const blk = (cfg, b) => X.hm(b.start) + '-' + X.hm(b.start + b.dur) + ' ' + b.title + ' [' + X.catOf(cfg, b.cat).name + ']' + (b.pillar ? ' PILLAR' : '') + (b.mit ? ' MIT' : '') + (b.status && b.status !== 'planned' ? ' -> ' + b.status : '') + (b.unplanned ? ' (unplanned)' : '') + (b.idea ? ' idea: ' + b.idea : '') + (b.note ? ' note: ' + b.note : '');
 const pct = v => v == null ? null : Math.round(v * 100) + '%';
 function brief(r, cfg) {
   const h = {}; Object.entries(r.actual).forEach(([k, v]) => { h[k] = X.hrs(v); });
