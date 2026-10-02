@@ -413,9 +413,18 @@ function endRule(cfg, ruleId, today) {
 /* delete a recurring block for good: every version of it, and its planned blocks from today on.
    Saved past days keep what happened. Returns the dates it changed in store. */
 function deleteRule(cfg, store, ruleId, today) {
-  if (!cfg.rules.some(x => x.id === ruleId)) return null;
+  const r0 = cfg.rules.find(x => x.id === ruleId);
+  if (!r0) return null;
+  // a past version goes alone (and older ones); never the live block it was replaced by, never a day's blocks
+  if (r0.to && r0.to < today) {
+    const ids = new Set([ruleId]);
+    for (let grew = true; grew;) { grew = false; cfg.rules.forEach(x => { if (!ids.has(x.id) && cfg.rules.some(y => ids.has(y.id) && y.prev === x.id)) { ids.add(x.id); grew = true; } }); }
+    cfg.rules.forEach(x => { if (ids.has(x.id)) x.deleted = true; });
+    return [];
+  }
+  // a live block: it and all its older versions
   const ids = new Set([ruleId]);
-  for (let grew = true; grew;) { grew = false; cfg.rules.forEach(x => { if (!ids.has(x.id) && (ids.has(x.prev) || cfg.rules.some(y => ids.has(y.id) && y.prev === x.id))) { ids.add(x.id); grew = true; } }); }
+  for (let grew = true; grew;) { grew = false; cfg.rules.forEach(x => { if (!ids.has(x.id) && cfg.rules.some(y => ids.has(y.id) && y.prev === x.id)) { ids.add(x.id); grew = true; } }); }
   cfg.rules.forEach(x => { if (ids.has(x.id)) x.deleted = true; });
   const changed = [];
   Object.keys((store && store.days) || {}).filter(k => k >= today).forEach(k => {

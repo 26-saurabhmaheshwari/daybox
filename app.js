@@ -1406,7 +1406,7 @@ const ACTS = {
   planit: a => planIt(a.dataset.id),
   boredsave: () => { CFG.boredom = $('#boredTxt').value.split('\n').map(x => x.trim()).filter(Boolean); saveCfg(); toast('Saved'); },
   rule: a => openRule(a.dataset.id),
-  ruledel: a => { const r = CFG.rules.find(x => x.id === a.dataset.id); if (r) confirmDel(r.title, 'All its versions go, and its planned blocks from today. Days you already saved keep it.', () => delRule(r.id)); },
+  ruledel: a => { const r = CFG.rules.find(x => x.id === a.dataset.id); if (r) confirmDel(r.title, r.to && r.to < today() ? 'Only this old version goes. The block you have now stays.' : 'It stops repeating, with all its old versions, and its planned blocks from today go. Days you already saved keep it.', () => delRule(r.id)); },
   opacc: a => decideOp(+a.dataset.i, true),
   oprej: a => decideOp(+a.dataset.i, false),
   opall: async () => { for (let i = 0; i < INBOX.ops.length; i++) if (INBOX.ops[i].state === 'pending') await decideOp(i, true); },

@@ -281,6 +281,14 @@ t('picks lottery: fixed per week, no repeats across lines, cooldown, keeps lines
   const last = new Set(Object.values(a.weekPlans[ws]).map(v => v.itemId));
   ['big', 'little'].forEach(k => { const v = a.weekPlans[ws2][k]; if (v) assert(!last.has(v.itemId), k + ' repeats ' + v.text); });
 });
+t('deleteRule on a past version leaves the live block and the days alone', () => {
+  const m = X.seedConfig(); const r = m.rules.find(x => x.id === 'r_kids');
+  const nr = X.editRule(m, r.id, { start: 1030 }, X.addDays(TODAY, -1));
+  const st = { days: { [TODAY]: { date: TODAY, blocks: [{ id: 'k', start: 1030, dur: 45, title: 'Kids slot', ruleId: r.id, status: 'planned' }] } } };
+  assert.strictEqual(X.deleteRule(m, st, r.id, TODAY).length, 0);
+  assert(m.rules.find(x => x.id === r.id).deleted); assert(!m.rules.find(x => x.id === nr.id).deleted, 'live one stays');
+  assert.strictEqual(st.days[TODAY].blocks.length, 1);
+});
 t('routine ideas rotate one a day, every idea gets its turn', () => {
   const m = X.seedConfig(); const r = m.rules.find(x => x.id === 'r_kids'); r.attach = ['20 min study']; r.rotate = ['A', 'B', 'C', 'D', 'E'];
   const seen = []; let k = X.weekStart(TODAY);
