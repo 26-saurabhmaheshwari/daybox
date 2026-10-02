@@ -173,7 +173,6 @@ body.dragging-task .tl-free.small .tl-gap{border-color:color-mix(in srgb,var(--a
 body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent) 60%,var(--line))}
 .tl-addrow{display:flex;justify-content:center;padding-top:10px}
 .tcard.sug .btn{background:var(--accent);border-color:var(--accent);color:#fff}
-.ds-day.on{background:linear-gradient(135deg,#6C5CE7,#A27BF6)}
 @media (max-width:1100px){.tcols{grid-template-columns:minmax(0,1fr)}.tcols .tc-right{position:static;order:-1}}
 @media (max-width:820px){
   .nowcard{gap:12px;padding:14px 16px}
@@ -242,6 +241,18 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 .tc-ok:hover{filter:brightness(1.08)}
 .fitbox .tc-chk{background:var(--surface)}
 .s-ic{width:12px;height:12px;flex:none}
+/* ---------- day header: arrows + date, green progress of the same width ---------- */
+.dnav{display:inline-flex;flex-direction:column;gap:6px;width:min(320px,100%);font-family:var(--f-body)}
+.dn-row{display:flex;align-items:center;gap:4px}
+.dn-a{width:30px;height:30px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--muted);display:grid;place-items:center;cursor:pointer;flex:none}
+.dn-a svg{width:15px;height:15px}
+.dn-a:hover{color:var(--accent);border-color:var(--accent)}
+.dn-mid{flex:1;border:0;background:none;font:inherit;font-size:1.12rem;font-weight:800;letter-spacing:-.01em;color:var(--ink);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px}
+.dn-mid:hover{color:var(--accent)}
+.dn-prog{display:flex;align-items:center;gap:8px}
+.dn-bar{flex:1;height:6px;border-radius:4px;background:var(--done-bg);overflow:hidden}
+.dn-bar i{display:block;height:100%;border-radius:4px;background:var(--done)}
+.dn-pt{flex:none;font-size:.7rem;font-weight:700;color:var(--done);font-variant-numeric:tabular-nums}
 /* ---------- task cards (To fit) ---------- */
 .fitbox{display:flex;flex-direction:column}
 .fb-h{margin:2px 2px 10px}
@@ -271,16 +282,6 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 .tc-x{border:0;background:none;color:var(--faint);font-size:1.05rem;line-height:1;padding:0 2px;cursor:pointer}
 @media (hover:hover){.tc-x{opacity:0;transition:opacity .15s}.tcard:hover .tc-x{opacity:1}}
 /* ---------- week date strip ---------- */
-.dstrip{display:flex;align-items:center;gap:2px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:3px;box-shadow:var(--shadow-sm)}
-.ds-day{position:relative;border:0;background:none;border-radius:9px;padding:4px 8px;min-width:40px;display:flex;flex-direction:column;align-items:center;line-height:1.15;color:var(--muted);cursor:pointer}
-.ds-day span{font-size:.6rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
-.ds-day b{font-size:.95rem;font-weight:700;color:var(--ink)}
-.ds-day:hover{background:var(--surface2)}
-.ds-day.today:not(.on) b{color:var(--accent)}
-.ds-day.on{background:linear-gradient(135deg,#6C5CE7,#A27BF6)}
-.ds-day.on span,.ds-day.on b{color:var(--surface)}
-.ds-arrow{border:0;background:none;width:24px;height:30px;display:grid;place-items:center;color:var(--faint);cursor:pointer}
-.ds-arrow svg{width:14px;height:14px}
 /* ---------- lists ---------- */
 .list{display:flex;flex-direction:column}
 .li{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:10px 4px;border-bottom:1px solid var(--line2)}
@@ -360,8 +361,6 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
   .top{padding:10px 0 8px;gap:8px}
   .top h1{font-size:1.15rem;width:100%}
   .top .tact{display:flex;gap:6px;flex-wrap:wrap;width:100%}
-  .top .tact .dstrip{width:100%;justify-content:space-between}
-  .ds-day{min-width:0;flex:1}
   #tabbar{display:grid;grid-template-columns:repeat(5,1fr);position:fixed;left:0;right:0;bottom:0;z-index:40;background:var(--surface);border-top:1px solid var(--line);padding:4px 4px calc(4px + env(safe-area-inset-bottom))}
   #tabbar button{border:0;background:none;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0;font-size:.66rem;font-weight:700;color:var(--muted)}
   #tabbar button svg{width:20px;height:20px}
@@ -481,7 +480,7 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 <div id="ov" hidden><div id="sheet" role="dialog" aria-modal="true"></div></div>
 <div id="toast" hidden></div>
 <div id="printArea"></div>
-<script src="core.js?v=30"></script>
-<script src="app.js?v=30"></script>
+<script src="core.js?v=31"></script>
+<script src="app.js?v=31"></script>
 </body>
 </html>

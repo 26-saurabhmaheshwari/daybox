@@ -653,12 +653,14 @@ function viewToday() {
   const free = X.gaps(d.blocks, isToday ? Math.max(s.dayStart, nm) : s.dayStart, s.bedtime, 15).reduce((a, g) => a + g.end - g.start, 0);
   const pil = X.dayStats(CFG, d);
   const yday = DAYS[addDays(CUR, -1)];
-  const ws0 = weekStart(CUR);
-  const strip = '<div class="dstrip"><button class="ds-arrow" data-act="dsweek" data-w="-7" aria-label="Previous week">' + ic('left') + '</button>'
-    + [0, 1, 2, 3, 4, 5, 6].map(i => { const k = addDays(ws0, i), dd = X.parseKey(k); return '<button class="ds-day' + (k === CUR ? ' on' : '') + (k === t ? ' today' : '') + '" data-act="dsgo" data-d="' + k + '"><span>' + DOW[dd.getDay()] + '</span><b>' + dd.getDate() + '</b></button>'; }).join('')
-    + '<button class="ds-arrow" data-act="dsweek" data-w="7" aria-label="Next week">' + ic('right') + '</button></div>';
-  const actions = strip + (isToday ? '' : '<button class="btn" data-act="gotoday">Today</button>')
-    + '<button class="btn" data-act="print" aria-label="Print">' + ic('print') + (phone ? '' : 'Print') + '</button>'
+  // one date with arrows, and a green bar of the same width: blocks done out of the day's blocks
+  const pd = d.blocks.filter(b => b.cat !== 'sleep' && b.status !== 'moved'), pDone = pd.filter(b => b.status === 'done').length;
+  const dd0 = X.parseKey(CUR), dateTxt = DOWL[dd0.getDay()] + ', ' + dd0.getDate() + ' ' + MON[dd0.getMonth()];
+  const dnav = '<span class="dnav"><span class="dn-row"><button type="button" class="dn-a" data-act="prev" aria-label="Previous day">' + ic('left') + '</button>'
+    + '<button type="button" class="dn-mid" data-act="gotoday" title="' + (isToday ? 'Today' : 'Back to today') + '">' + (isToday ? 'Today · ' : '') + dateTxt + '</button>'
+    + '<button type="button" class="dn-a" data-act="next" aria-label="Next day">' + ic('right') + '</button></span>'
+    + '<span class="dn-prog"><span class="dn-bar"><i style="width:' + (pd.length ? Math.round(pDone / pd.length * 100) : 0) + '%"></i></span><span class="dn-pt">' + pDone + '/' + pd.length + ' done</span></span></span>';
+  const actions = '<button class="btn" data-act="print" aria-label="Print" title="Print">' + ic('print') + '</button>'
     + (CUR <= t ? '<button class="btn pri" data-act="close">Close day</button>' : '');
   let top = '';
   if (!localStorage.getItem(LS_ONB)) top += '<div class="card inbox" style="margin-bottom:12px"><h3>Welcome to DayBox</h3><ol class="small" style="margin:0 0 10px;padding-left:18px"><li>Sign in with Google (the same account as Tenfold) so it syncs to your phone.</li><li>When a block ends, tap ✓ or ✗. That is all the logging.</li><li>Bored or free? Press <b>What now?</b></li></ol><div class="row"><button class="btn pri sm" data-act="signin">Sign in</button><button class="btn ghost sm" data-act="onb">Got it</button></div></div>';
@@ -685,7 +687,7 @@ function viewToday() {
   const clock = d.untracked ? '' : '<div class="panel" id="dayClock" data-date="' + CUR + '"><div class="ph"><h3>' + (isToday ? 'Your day' : past ? 'That day' : 'Plan for ' + fmtShort(CUR)) + '</h3>' + clockLegend() + '</div>' + clockHtml(d, true) + '</div>';
   const body = top + (fit ? '<div class="tcols"><div class="tc-left">' + clock + '</div><div class="tc-right">' + fit + '</div></div>' : clock);
   return {
-    title: isToday ? 'Today' : DOWL[X.parseKey(CUR).getDay()], sub: isToday ? fmtLong(CUR) : X.parseKey(CUR).getDate() + ' ' + MON[X.parseKey(CUR).getMonth()] + ' ' + X.parseKey(CUR).getFullYear(), actions, body,
+    title: dnav, sub: '', actions, body,
     after() { bindDrag(); },
   };
 }
@@ -1158,8 +1160,6 @@ const ACTS = {
   noop: () => {},
   wkopen: a => { CUR = a.dataset.d; setView('today'); },
   fitnew: () => openAddTask(),
-  dsgo: a => { CUR = a.dataset.d; SCROLL_NOW = true; render(); },
-  dsweek: a => { CUR = addDays(CUR, +a.dataset.w); SCROLL_NOW = true; render(); },
   fitdone: a => { const d = AG_DAY, x = d && (d.todo || []).find(y => y.id === a.dataset.id); if (!x) return; const b = blockOf(d, x); x.done = !(x.done || (b && b.status === 'done')); if (b) b.status = x.done ? 'done' : 'planned'; saveDay(d); render(); },
   fitdel: a => { const d = AG_DAY; if (!d) return; const before = clone(d); d.todo = (d.todo || []).filter(y => y.id !== a.dataset.id); saveDay(d); render(); toast('Removed from the list', 'Undo', () => { saveDay(before); render(); }); },
   sugacc: a => { const d = AG_DAY, sg = SUGS[+a.dataset.i]; if (!d || !sg) return; if ((d.todo || []).length >= FIT_MAX) return toast(FIT_MAX + ' is the limit for a day.'); d.todo = (d.todo || []).concat({ id: uid(), title: sg.item.title, min: sg.min, cat: sg.item.cat, done: false, by: 'saarthi' }); saveDay(d); render(); toast('Added to To fit. Place it when you are ready.'); },
