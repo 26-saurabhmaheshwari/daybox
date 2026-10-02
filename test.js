@@ -13,6 +13,7 @@ t('module script parses', () => { const m = html.match(/<script type="module">([
 t('never writes Tenfold users/ doc', () => { assert(!/setDoc\(\s*doc\(\s*db\s*,\s*'users'/.test(html)); assert(!/deleteDoc\(\s*doc\(\s*db\s*,\s*'users'/.test(html)); });
 t('never writes Tenfold localStorage', () => { const a = read('app.js'); assert(!/setItem\(\s*['"]ptd_/.test(a)); assert(!/removeItem\(\s*['"]ptd_/.test(a)); });
 t('saarthi guard exists', () => { const s = read('saarthi/saarthi.js'); assert(/assertPlannerPath/.test(s)); assert(!/collection\(\s*['"]users['"]\s*\)\.doc\([^)]*\)\.(set|update|delete)/.test(s)); });
+t('light theme defines every core colour token', () => { const root = html.match(/:root\{([\s\S]*?)\n\}/)[1]; ['--bg', '--surface', '--ink', '--muted', '--line', '--accent', '--accent-soft', '--accent-ink', '--done', '--mark', '--skip', '--warn', '--alert'].forEach(k => assert(root.includes(k + ':'), k)); });
 t('my-routine.json not tracked', () => assert(/my-routine\.json/.test(read('.gitignore'))));
 
 // core logic

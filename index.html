@@ -18,7 +18,7 @@
 <style>
 :root{
   --bg:#F5F4FB; --surface:#FFFFFF; --surface2:#F3F2F9; --ink:#1D1B33; --muted:#6C6A86; --faint:#A3A1BC;
-  --line:#ECEAF6; --line2:#F2F1F8; --shadow-sm:0 1px 3px rgba(40,30,90,.06);
+  --line:#ECEAF6; --line2:#F2F1F8; --shadow-sm:0 1px 3px rgba(40,30,90,.06); --accent:#7B68EE; --accent-ink:#FFFFFF; --accent-soft:#EFECFE;
   --done:#12A150; --done-bg:#E6F7EE; --mark:#D97A00; --mark-bg:#FFF3DC; --skip:#8B8AA3; --skip-bg:#F1F0F6;
   --warn:#A8670F; --warn-bg:#FBF0DD; --alert:#B83229; --alert-bg:#FBE5E3; --good:#23824F; --good-bg:#DFF2E7;
   --shadow:0 1px 2px rgba(16,32,28,.06),0 6px 20px rgba(16,32,28,.07);
@@ -531,7 +531,7 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 <div id="shell">
   <aside id="nav">
     <div class="brand">
-      <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="2" y="2" width="28" height="28" rx="8" fill="var(--accent)"/><rect x="8" y="8" width="16" height="4" rx="2" fill="var(--accent-ink)"/><rect x="8" y="14" width="10" height="4" rx="2" fill="var(--accent-ink)" opacity=".75"/><rect x="8" y="20" width="13" height="4" rx="2" fill="var(--accent-ink)" opacity=".5"/></svg>
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="2" y="2" width="28" height="28" rx="8" style="fill:var(--accent)"/><rect x="8" y="8" width="16" height="4" rx="2" style="fill:var(--accent-ink)"/><rect x="8" y="14" width="10" height="4" rx="2" style="fill:var(--accent-ink)" opacity=".75"/><rect x="8" y="20" width="13" height="4" rx="2" style="fill:var(--accent-ink)" opacity=".5"/></svg>
       <div><b>DayBox</b><small>with Saarthi</small></div>
     </div>
     <div id="navList"></div>
@@ -547,7 +547,7 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 <div id="ov" hidden><div id="sheet" role="dialog" aria-modal="true"></div></div>
 <div id="toast" hidden></div>
 <div id="printArea"></div>
-<script src="core.js?v=26"></script>
-<script src="app.js?v=26"></script>
+<script src="core.js?v=27"></script>
+<script src="app.js?v=27"></script>
 </body>
 </html>
