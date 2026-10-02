@@ -247,6 +247,15 @@ t('ops: setStatus, removeTodo, at picks one of two same-title blocks', () => {
   r = X.applyOp(m, st, { type: 'removeTodo', date: k, title: 'exercise' }, k); assert.strictEqual(r.day.todo.length, 0);
   assert(X.applyOp(m, st, { type: 'removeTodo', date: k, title: 'Nope' }, k).error);
 });
+t('deleteRule: all versions gone, planned blocks from today removed, past days kept', () => {
+  const m = X.seedConfig(); const r = m.rules.find(x => x.id === 'r_kids');
+  const nr = X.editRule(m, r.id, { start: 1030 }, TODAY);
+  const past = X.addDays(TODAY, -1), fut = X.addDays(TODAY, 1);
+  const st = { days: { [past]: { date: past, blocks: [{ id: 'p', start: 1020, dur: 45, title: 'Kids slot', ruleId: r.id, status: 'done' }] }, [fut]: { date: fut, blocks: [{ id: 'f', start: 1030, dur: 45, title: 'Kids slot', ruleId: nr.id, status: 'planned' }] } } };
+  const ch = X.deleteRule(m, st, nr.id, TODAY);
+  assert(m.rules.find(x => x.id === r.id).deleted && m.rules.find(x => x.id === nr.id).deleted, 'both versions');
+  assert.strictEqual(ch.join(), fut); assert.strictEqual(st.days[fut].blocks.length, 0); assert.strictEqual(st.days[past].blocks.length, 1);
+});
 t('my-routine.json loads', () => {
   if (!fs.existsSync(__dirname + '/my-routine.json')) return;
   const o = JSON.parse(read('my-routine.json')); const m = X.mergeConfig(o.config);

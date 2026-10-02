@@ -154,6 +154,12 @@ function setView(v) { VIEW = VIEWS.some(x => x.id === v) ? v : 'today'; localSto
 
 /* ---------- toast + sheet ---------- */
 let toastT = null;
+/* deletes ask first: the first tap turns the button into a red "Delete?", a second tap within 4s does it */
+function confirmTap(btn, fn) {
+  if (btn.dataset.armed) return fn();
+  btn.dataset.armed = '1'; const was = btn.innerHTML; btn.innerHTML = 'Delete?'; btn.classList.add('danger', 'armed');
+  setTimeout(() => { if (!btn.isConnected) return; delete btn.dataset.armed; btn.innerHTML = was; btn.classList.remove('danger', 'armed'); }, 4000);
+}
 function toast(msg, label, fn, ms) {
   const t = $('#toast');
   t.innerHTML = '<span>' + esc(msg) + '</span>' + (label ? '<button type="button">' + esc(label) + '</button>' : '');
@@ -223,11 +229,11 @@ function titleList() {
 }
 function openBlock(d, b, preset) {
   const isNew = !b;
-  const src = b || { title: '', cat: 'goal', start: preset.start, dur: preset.dur, attach: [], mit: false, pillar: false, backup: null, checks: false, status: 'planned' };
+  const src = b || { title: preset.title || '', cat: preset.cat || 'goal', start: preset.start, dur: preset.dur, attach: [], mit: false, pillar: false, backup: null, checks: false, status: 'planned' };
+  const pickDate = isNew && preset && preset.pickDate;
   const t = today();
   const lateNew = isNew && d && (d.date < t || (d.date === t && preset.start + preset.dur <= nowMin()));
   const durs = DURS.includes(src.dur) ? DURS : DURS.concat([src.dur]).sort((a, c) => a - c);
-  const item = b && b.itemId ? CFG.items.find(i => i.id === b.itemId) : null;
   const bkAt = d && b && b.pillar && b.backup != null && !b.strict ? X.backupSlot(d, b, d.date === t ? nowMin() : 0) : null;
   const canBackup = bkAt != null && b.status !== 'moved' && !d.blocks.some(x => x.of === b.id);
   const html = '<div class="sh-h"><h2>' + (isNew ? 'New block' : 'Edit block') + '</h2><span class="muted small">' + fmtShort(d.date) + '</span><button class="iconbtn" data-x aria-label="Close">×</button></div>'
@@ -235,6 +241,7 @@ function openBlock(d, b, preset) {
     + (b && b.src === 'rule' ? '<div class="hint">Repeats from your routine. Changes here change this day only.</div>' : '')
     + (b && b.pillar && d ? '<div class="hint">Pillar: locked on the grid so it does not move by accident.' + (b.strict ? ' Strict: no backup, a miss stays one miss.' : '') + '</div>' : '')
     + '<label class="field"><span>Title</span><input id="bTitle" type="text" list="bTitles" value="' + esc(src.title) + '" placeholder="What will you do?" autocomplete="off"></label><datalist id="bTitles">' + titleList() + '</datalist>'
+    + (pickDate ? '<label class="field"><span>Day</span><input id="bDate" type="date" min="' + t + '" value="' + d.date + '"></label>' : '')
     + '<div class="grid3"><label class="field"><span>Category</span><select id="bCat">' + catOptions(src.cat) + '</select></label>'
     + '<label class="field"><span>Start</span><input id="bStart" type="time" step="300" value="' + hm(src.start) + '"></label>'
     + '<label class="field"><span>Length</span><select id="bDur">' + durs.map(x => '<option value="' + x + '"' + (x === src.dur ? ' selected' : '') + '>' + durTxt(x) + '</option>').join('') + '</select></label></div>'
@@ -247,7 +254,6 @@ function openBlock(d, b, preset) {
     + (d ? '<label class="field"><span>Note</span><input id="bNote" type="text" value="' + esc(src.note || '') + '"></label>' : '')
     + (d && !isNew ? '<div class="field"><span>How did it go?</span><div class="stbtns">' + ['done', 'skipped'].map(s => '<button type="button" data-st="' + s + '" class="' + (b.status === s ? 'on' : '') + '">' + { done: 'Done', skipped: 'Skipped' }[s] + '</button>').join('') + '</div></div>' : '')
     + (canBackup ? '<button type="button" class="btn" data-backup>Use backup at ' + hm(bkAt) + '</button>' : '')
-    + (item && item.kind === 'dream' ? '<label class="check"><input id="bDream" type="checkbox"' + (item.done ? ' checked' : '') + '> Dream done, tick it off in the bank</label>' : '')
     + (isNew && d ? '<label class="check"><input id="bUnpl" type="checkbox"' + (lateNew ? ' checked' : '') + '> Unplanned (this is what really happened)</label>' : '')
     + '<div class="al alert" id="bErr" hidden></div>'
     + '</div><div class="sh-f">' + (!isNew ? (b.src === 'rule' && b.ruleId ? '<button class="btn danger l" data-del>Remove this day only</button><button class="btn danger" data-stop>Stop repeating</button>' : '<button class="btn danger l" data-del>Delete</button>') : '') + '<button class="btn" data-x>Cancel</button><button class="btn pri" data-save>Save</button></div>';
@@ -281,16 +287,15 @@ function openBlock(d, b, preset) {
       const oldAtt = X.attachObjs(src.attach);
       const vals = { title, cat: $('#bCat', sh).value, start: clamp(start, 0, 1439), dur, mit: $('#bMit', sh).checked, pillar, strict, checks: $('#bChecks', sh).checked, backup: pillar && !strict && bv ? toMin(bv) : null };
       const willLive = isNew ? true : status !== 'skipped' && status !== 'moved';
+      if (pickDate) { const k = $('#bDate', sh).value || d.date; if (k !== d.date) d = day(k); }
       const cl = willLive ? X.clashWith(d.blocks, { start: vals.start, dur }, b ? b.id : null) : null;
       if (cl) { const er = $('#bErr', sh); er.hidden = false; er.textContent = 'Overlaps ' + clashTxt(cl) + '. Change the start or the length.'; return; }
       vals.attach = names.map(n => ({ t: n, done: !!(oldAtt.find(a => a.t === n) || {}).done }));
       vals.note = $('#bNote', sh).value.trim();
-      if (isNew) { const unpl = $('#bUnpl', sh).checked; d.blocks.push(Object.assign({ id: uid(), src: 'manual', status: unpl ? 'done' : 'planned', unplanned: unpl }, vals)); }
+      if (isNew) { const unpl = $('#bUnpl', sh).checked; d.blocks.push(Object.assign({ id: uid(), src: (preset && preset.src) || 'manual', status: unpl ? 'done' : 'planned', unplanned: unpl }, preset && preset.itemId ? { itemId: preset.itemId } : {}, vals)); if (pickDate) toast('Planned ' + title + ': ' + fmtShort(d.date) + ' ' + hm(vals.start)); }
       else Object.assign(d.blocks.find(x => x.id === b.id), vals, { status });
       sortBlocks(d);
       saveDay(d);
-      const dr = $('#bDream', sh);
-      if (dr && item) { item.done = dr.checked; item.doneAt = dr.checked ? d.date : null; saveCfg(); }
       closeSheet(); render();
     };
     $('[data-save]', sh).onclick = save;
@@ -936,7 +941,7 @@ function viewBank() {
         b.onclick = () => { const v = inp.value.trim(); if (!v) return inp.focus(); CFG.items.push({ id: uid(), kind: 'fun', title: v, cat: b.dataset.funadd }); saveCfg(); render(); };
         inp.onkeydown = e => { if (e.key === 'Enter') b.click(); };
       });
-      $$('[data-fundel]').forEach(b => { b.onclick = () => { const it = CFG.items.find(i => i.id === b.dataset.fundel); it.deleted = true; saveCfg(); render(); toast('Removed', 'Undo', () => { it.deleted = false; saveCfg(); render(); }); }; });
+      $$('[data-fundel]').forEach(b => { b.onclick = () => confirmTap(b, () => { const it = CFG.items.find(i => i.id === b.dataset.fundel); it.deleted = true; saveCfg(); render(); toast('Removed ' + it.title, 'Undo', () => { it.deleted = false; saveCfg(); render(); }); }); });
       $$('[data-bal]').forEach(r => {
         r.oninput = () => { $('#bv_' + r.dataset.bal).textContent = r.value + '%'; const sum = $$('[data-bal]').reduce((a, x) => a + +x.value, 0); $('#balSum').textContent = 'Total ' + sum + '% (it is scaled to 100%).'; };
         r.onchange = () => { CFG.settings.balance[r.dataset.bal] = +r.value; saveCfg(); render(); };
@@ -976,24 +981,30 @@ function planIt(id) {
     const gs = X.gaps(d.blocks, from, s.bedtime, need).filter(g => need < 120 || dow(date) === 0 || dow(date) === 6);
     const g = gs.find(x => !it.zone || it.zone === 'any' || zoneOf(x.start) === it.zone) || gs[0];
     if (!g) continue;
-    const before = clone(d);
-    d.blocks.push({ id: uid(), start: g.start, dur: need, title: it.title, cat: it.cat, itemId: it.id, src: 'bank', status: 'planned', attach: [], pillar: false, mit: false });
-    sortBlocks(d); saveDay(d); render();
-    return toast('Planned ' + it.title + ': ' + fmtShort(date) + ' ' + hm(g.start), 'Undo', () => { saveDay(before); render(); }, 7000);
+    return openBlock(d, null, { start: g.start, dur: need, title: it.title, cat: it.cat, itemId: it.id, src: 'bank', pickDate: true });
   }
-  toast('No free slot of ' + durTxt(need) + ' in the next 2 weeks.');
+  openBlock(day(t), null, { start: Math.ceil(nowMin() / 15) * 15, dur: need, title: it.title, cat: it.cat, itemId: it.id, src: 'bank', pickDate: true });
+  toast('No free slot of ' + durTxt(need) + ' in the next 2 weeks. Pick a day and time.');
 }
 
 /* ---------- routine ---------- */
 function daysTxt(ds) { const s = (ds || []).slice().sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)); if (s.length === 7) return 'Every day'; if (s.join() === '1,2,3,4,5') return 'Mon–Fri'; if (s.join() === '6,0') return 'Weekend'; return s.map(d => DOW[d]).join(' '); }
 function viewRoutine() {
   const t = today();
-  let body = '<p class="hint">Your routine: blocks that repeat on set weekdays. Editing one starts from today, past days keep the old time. A new block trims the plain blocks it lands on, but never a pillar.</p>';
+  let body = '<p class="hint">Your routine: blocks that repeat on set weekdays. Editing one starts from today, past days keep the old time. × deletes it with all its versions; days you already saved keep what happened. A new block trims the plain blocks it lands on, but never a pillar.</p>';
   const liveR = CFG.rules.filter(r => X.ruleLive(r, t)).sort((a, b) => a.start - b.start || a.days[0] - b.days[0]);
   const old = CFG.rules.filter(r => !r.deleted && r.to && r.to < t);
-  body += '<div class="card"><div class="list">' + liveR.map(r => { const c = catOf(CFG, r.cat); return '<div class="li" style="--c:' + c.color + '"><span class="sw"></span><div data-act="rule" data-id="' + r.id + '" style="cursor:pointer"><div class="t">' + (r.pillar ? ic('lock', 's-ic') + ' ' : '') + esc(r.title) + '</div><div class="m"><span class="mono">' + hm(r.start) + '–' + hm(r.start + r.dur) + '</span> · ' + daysTxt(r.days) + ' · ' + esc(c.name) + (r.pillar ? (r.strict ? ' · strict, no backup' : r.backup != null ? ' · backup ' + hm(r.backup) : '') : '') + (r.from && r.from > '2000-01-01' ? ' · from ' + fmtShort(r.from) : '') + '</div></div><button class="btn sm" data-act="rule" data-id="' + r.id + '">Edit</button></div>'; }).join('') + '</div><div style="margin-top:10px"><button class="btn pri sm" data-act="rule">' + ic('plus') + 'Add recurring block</button></div></div>';
-  if (old.length) body += '<div class="card"><h3>Past versions</h3><div class="list">' + old.map(r => '<div class="li"><span class="chip">' + (r.from && r.from > '2000-01-01' ? fmtShort(r.from) : 'start') + ' → ' + fmtShort(r.to) + '</span><div><div class="t">' + esc(r.title) + '</div><div class="m mono">' + hm(r.start) + '–' + hm(r.start + r.dur) + ' · ' + daysTxt(r.days) + '</div></div><span></span></div>').join('') + '</div></div>';
+  body += '<div class="card"><div class="list">' + liveR.map(r => { const c = catOf(CFG, r.cat); return '<div class="li" style="--c:' + c.color + '"><span class="sw"></span><div data-act="rule" data-id="' + r.id + '" style="cursor:pointer"><div class="t">' + (r.pillar ? ic('lock', 's-ic') + ' ' : '') + esc(r.title) + '</div><div class="m"><span class="mono">' + hm(r.start) + '–' + hm(r.start + r.dur) + '</span> · ' + daysTxt(r.days) + ' · ' + esc(c.name) + (r.pillar ? (r.strict ? ' · strict, no backup' : r.backup != null ? ' · backup ' + hm(r.backup) : '') : '') + (r.from && r.from > '2000-01-01' ? ' · from ' + fmtShort(r.from) : '') + '</div></div><span class="row" style="flex-wrap:nowrap"><button class="btn sm" data-act="rule" data-id="' + r.id + '">Edit</button><button class="btn ghost sm" data-act="ruledel" data-id="' + r.id + '" aria-label="Delete ' + esc(r.title) + '" title="Delete">×</button></span></div>'; }).join('') + '</div><div style="margin-top:10px"><button class="btn pri sm" data-act="rule">' + ic('plus') + 'Add recurring block</button></div></div>';
+  if (old.length) body += '<div class="card"><h3>Past versions</h3><div class="list">' + old.map(r => '<div class="li"><span class="chip">' + (r.from && r.from > '2000-01-01' ? fmtShort(r.from) : 'start') + ' → ' + fmtShort(r.to) + '</span><div><div class="t">' + esc(r.title) + '</div><div class="m mono">' + hm(r.start) + '–' + hm(r.start + r.dur) + ' · ' + daysTxt(r.days) + '</div></div><button class="btn ghost sm" data-act="ruledel" data-id="' + r.id + '" aria-label="Delete ' + esc(r.title) + '" title="Delete">×</button></div>').join('') + '</div></div>';
   return { title: 'Routine', sub: 'recurring blocks', body };
+}
+function delRule(id) {
+  const r = CFG.rules.find(x => x.id === id); if (!r) return;
+  const cfgBefore = clone(CFG), daysBefore = clone(DAYS);
+  const changed = X.deleteRule(CFG, STORE, id, today()); saveCfg();
+  (changed || []).forEach(k => saveDay(DAYS[k]));
+  render();
+  toast(r.title + ' deleted.', 'Undo', () => { CFG = X.mergeConfig(cfgBefore); saveCfg(); (changed || []).forEach(k => { DAYS[k] = daysBefore[k]; saveDay(DAYS[k]); }); render(); }, 8000);
 }
 function openRule(id) {
   const t = today();
@@ -1007,12 +1018,12 @@ function openRule(id) {
     + '<label class="field"><span>Small things attached (comma separated)</span><input id="rAttach" type="text" value="' + esc((r.attach || []).join(', ')) + '"></label>'
     + (id ? '<label class="check"><input id="rToday" type="checkbox" checked> Also change today</label>' : '')
     + '<p class="hint" style="margin:0">Applies from today on. Saved past days keep the old time.</p>'
-    + '</div><div class="sh-f">' + (id ? '<button class="btn danger l" data-del>End it</button>' : '') + '<button class="btn" data-x>Cancel</button><button class="btn pri" data-save>Save</button></div>';
+    + '</div><div class="sh-f">' + (id ? '<button class="btn danger l" data-del>Delete</button>' : '') + '<button class="btn" data-x>Cancel</button><button class="btn pri" data-save>Save</button></div>';
   openSheet(html, sh => {
     let days = r.days.slice();
     $$('#rDays button', sh).forEach(b => { b.onclick = () => { const d = +b.dataset.d; days = days.includes(d) ? days.filter(x => x !== d) : days.concat(d); b.classList.toggle('on'); }; });
     const del = $('[data-del]', sh);
-    if (del) del.onclick = () => { X.endRule(CFG, id, t); saveCfg(); closeSheet(); render(); toast(r.title + ' ends today. Past days keep it.'); };
+    if (del) del.onclick = () => confirmTap(del, () => { closeSheet(); delRule(id); });
     $('[data-save]', sh).onclick = () => {
       const title = $('#rTitle', sh).value.trim(); if (!title) return $('#rTitle', sh).focus();
       const pillar = $('#rPillar', sh).checked, strict = pillar && $('#rStrict', sh).checked, bv = $('#rBackup', sh).value;
@@ -1425,6 +1436,7 @@ const ACTS = {
   planws: a => { PLAN_WS = a.dataset.ws; render(); },
   plansave: savePlan,
   rule: a => openRule(a.dataset.id),
+  ruledel: a => confirmTap(a, () => delRule(a.dataset.id)),
   opacc: a => decideOp(+a.dataset.i, true),
   oprej: a => decideOp(+a.dataset.i, false),
   opall: async () => { for (let i = 0; i < INBOX.ops.length; i++) if (INBOX.ops[i].state === 'pending') await decideOp(i, true); },

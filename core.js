@@ -329,6 +329,21 @@ function endRule(cfg, ruleId, today) {
   if (!r) return;
   if (r.from && r.from >= today) r.deleted = true; else r.to = addDays(today, -1);
 }
+/* delete a recurring block for good: every version of it, and its planned blocks from today on.
+   Saved past days keep what happened. Returns the dates it changed in store. */
+function deleteRule(cfg, store, ruleId, today) {
+  if (!cfg.rules.some(x => x.id === ruleId)) return null;
+  const ids = new Set([ruleId]);
+  for (let grew = true; grew;) { grew = false; cfg.rules.forEach(x => { if (!ids.has(x.id) && (ids.has(x.prev) || cfg.rules.some(y => ids.has(y.id) && y.prev === x.id))) { ids.add(x.id); grew = true; } }); }
+  cfg.rules.forEach(x => { if (ids.has(x.id)) x.deleted = true; });
+  const changed = [];
+  Object.keys((store && store.days) || {}).filter(k => k >= today).forEach(k => {
+    const d = store.days[k], n = (d.blocks || []).length;
+    d.blocks = (d.blocks || []).filter(b => !(ids.has(b.ruleId) && b.status === 'planned'));
+    if (d.blocks.length !== n) changed.push(k);
+  });
+  return changed;
+}
 const ruleLive = (r, today) => !r.deleted && (!r.to || r.to >= today);
 
 /* ---------- layout helpers ---------- */
@@ -809,7 +824,7 @@ root.DBX = {
   seedConfig, mergeConfig, migrateTemplates, catOf, liveCats, isSleep, isWaste, freeCats, addCat, deleteCat, catUse, SEED_CATS, SEED_TYPES, FIXED_TYPES, liveTypes, typeOf, addType, deleteType, SHUTDOWN, WEEK_SLOTS,
   overlaps, clashWith, carve, ruleClash, makeRoom, backupSlot,
   activeRules, templateFor, attachObjs, blockFrom, weekItemsFor, buildDay, getDay, planSnapshot, lockIfDue, resetDay,
-  editRule, endRule, ruleLive, lanes, live, intervals, unionMin, gaps,
+  editRule, endRule, deleteRule, ruleLive, lanes, live, intervals, unionMin, gaps,
   tfGoals, tfCatId, ensureTfCats, candidates, matches, lastDone, hoursDone, funMin, weekDays, itemCount, balanceState, suggest, backupOffers, useBackup, fillDay, placeBlock,
   missedYesterday, principleChecks, actualMin, dayStats, trackedDays, rangeReport, direction, streaks,
   dayFeatures, sanyamHabits, sanyamAnalysis, mergeCloud, applyOp,
