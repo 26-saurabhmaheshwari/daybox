@@ -678,7 +678,7 @@ function tlCard(d, b, st, isNext) {
     + '<div class="tl-right">' + right + '</div></div></div>';
 }
 function tlFree(g, nowIn, nm, clickable) {
-  return '<div class="tl-free' + (nowIn ? ' has-now' : '') + '" data-gs="' + g.start + '" data-ge="' + g.end + '">'
+  return '<div class="tl-free' + (nowIn ? ' has-now' : '') + (g.end - g.start < 30 && !nowIn ? ' small' : '') + '" data-gs="' + g.start + '" data-ge="' + g.end + '">'
     + '<div class="tl-time">' + (nowIn ? '<span class="nowpill" id="nowpill">Now ' + hm(nm) + '</span>' : hm(g.start)) + '</div><div class="tl-rail"></div>'
     + '<div class="tl-gap"' + (clickable ? ' data-act="tladd" data-gs="' + g.start + '" data-ge="' + g.end + '"' : '') + '><span>' + durTxt(g.end - g.start) + ' free</span>' + (clickable ? '<b>drop a task here</b>' : '') + '</div></div>';
 }

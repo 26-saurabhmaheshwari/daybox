@@ -279,6 +279,11 @@ button.ag-h{cursor:pointer}
 .tl-free .tl-rail::before{background:repeating-linear-gradient(to bottom,var(--line) 0 4px,transparent 4px 8px)}
 .tl-gap{margin:3px 0;border:1.5px dashed color-mix(in srgb,var(--accent) 22%,var(--line));border-radius:12px;padding:6px 12px;font-size:.76rem;font-weight:600;color:var(--faint);display:flex;justify-content:space-between;gap:10px}
 .tl-gap[data-act]{cursor:pointer}
+.tl-free.small{min-height:20px}
+.tl-free.small .tl-time{font-size:.66rem}
+.tl-free.small .tl-gap{border-color:transparent;padding:2px 12px;font-size:.7rem}
+.tl-free.small .tl-gap b{display:none}
+body.dragging-task .tl-free.small .tl-gap{border-color:color-mix(in srgb,var(--accent) 60%,var(--line))}
 .tl-gap b{color:var(--accent);font-weight:700}
 .tl-gap[data-act]:hover{border-color:var(--accent);background:var(--accent-soft)}
 body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent) 60%,var(--line))}
@@ -341,7 +346,7 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 .ds-day b{font-size:.95rem;font-weight:700;color:var(--ink)}
 .ds-day:hover{background:var(--surface2)}
 .ds-day.today:not(.on) b{color:var(--accent)}
-.ds-day.on{background:var(--ink)}
+.ds-day.on{background:linear-gradient(135deg,#6C5CE7,#A27BF6)}
 .ds-day.on span,.ds-day.on b{color:var(--surface)}
 .ds-arrow{border:0;background:none;width:24px;height:30px;display:grid;place-items:center;color:var(--faint);cursor:pointer}
 .ds-arrow svg{width:14px;height:14px}
@@ -547,7 +552,7 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 <div id="ov" hidden><div id="sheet" role="dialog" aria-modal="true"></div></div>
 <div id="toast" hidden></div>
 <div id="printArea"></div>
-<script src="core.js?v=27"></script>
-<script src="app.js?v=27"></script>
+<script src="core.js?v=28"></script>
+<script src="app.js?v=28"></script>
 </body>
 </html>
