@@ -696,7 +696,7 @@ function viewToday() {
     + '<button type="button" class="dn-mid" data-act="gotoday" title="' + (isToday ? 'Today' : 'Not today. Tap to go back to today') + '">' + dateTxt + '</button>'
     + '<button type="button" class="dn-a" data-act="next" aria-label="Next day">' + ic('right') + '</button></span></span>';
   const actions = '<button class="btn ghost" data-act="print" aria-label="Print" title="Print">' + ic('print') + '</button>'
-    + (CUR <= t ? '<button class="btn pri" data-act="close">Close day</button>' : '');
+    + (CUR <= t ? '<button class="cd-btn" data-act="close" aria-label="Close day" data-tip="Close day">' + ic('check') + '</button>' : '');
   let top = '';
   if (!localStorage.getItem(LS_ONB)) top += '<div class="card inbox" style="margin-bottom:12px"><h3>Welcome to DayBox</h3><ol class="small" style="margin:0 0 10px;padding-left:18px"><li>Sign in with Google (the same account as Tenfold) so it syncs to your phone.</li><li>When a block ends, tap ✓ or ✗. That is all the logging.</li><li>Bored or free? Press <b>What now?</b></li></ol><div class="row"><button class="btn pri sm" data-act="signin">Sign in</button><button class="btn ghost sm" data-act="onb">Got it</button></div></div>';
   const statTxt = d.untracked ? '' : (sc.past ? '<span><b>' + sc.marked + '/' + sc.past + '</b>marked</span>' : '') + (pil.pillarsPlanned ? '<span><b>' + pil.pillarsKept + '/' + pil.pillarsPlanned + '</b>pillars</span>' : '') + '<span><b>' + durTxt(free) + '</b>free</span>';
