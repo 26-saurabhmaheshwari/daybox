@@ -686,9 +686,7 @@ function viewToday() {
   const phone = isPhone();
   const twice = CUR <= t ? X.missedYesterday(STORE, CFG, CUR) : new Set();
   const pc = X.principleChecks(CFG, d, twice);
-  const sc = statusCounts(d);
   const free = X.gaps(d.blocks, fitFrom(d), s.bedtime, 15).reduce((a, g) => a + g.end - g.start, 0);
-  const pil = X.dayStats(CFG, d);
   const yday = DAYS[addDays(CUR, -1)];
   // one date with arrows, and a green bar of the same width: blocks done out of the day's blocks
   const dd0 = X.parseKey(CUR), dateTxt = DOWL[dd0.getDay()] + ', ' + dd0.getDate() + ' ' + MON[dd0.getMonth()];
@@ -699,9 +697,9 @@ function viewToday() {
     + (CUR <= t ? '<button class="cd-btn" data-act="close" aria-label="Close day" data-tip="Close day">' + ic('check') + '</button>' : '');
   let top = '';
   if (!localStorage.getItem(LS_ONB)) top += '<div class="card inbox" style="margin-bottom:12px"><h3>Welcome to DayBox</h3><ol class="small" style="margin:0 0 10px;padding-left:18px"><li>Sign in with Google (the same account as Tenfold) so it syncs to your phone.</li><li>When a block ends, tap ✓ or ✗. That is all the logging.</li><li>Bored or free? Press <b>What now?</b></li></ol><div class="row"><button class="btn pri sm" data-act="signin">Sign in</button><button class="btn ghost sm" data-act="onb">Got it</button></div></div>';
-  const statTxt = d.untracked ? '' : (sc.past ? '<span><b>' + sc.marked + '/' + sc.past + '</b>marked</span>' : '') + (pil.pillarsPlanned ? '<span><b>' + pil.pillarsKept + '/' + pil.pillarsPlanned + '</b>pillars</span>' : '') + '<span><b>' + durTxt(free) + '</b>free</span>';
+  const statTxt = d.untracked ? '' : '<span><b>' + durTxt(free) + '</b>free</span>';
   // the now bar lives in the header row, between the date and the buttons
-  const mid = isToday ? nowBarHtml(d, (pil.pillarsPlanned ? '<span><b>' + pil.pillarsKept + '/' + pil.pillarsPlanned + '</b>pillars</span>' : '') + '<span><b>' + durTxt(free) + '</b>free</span>') : '';
+  const mid = isToday ? nowBarHtml(d, '<span><b>' + durTxt(free) + '</b>free</span>') : '';
   if (isToday && pendingOps()) top += '<div class="al" style="margin-bottom:10px">' + ic('saarthi', 's-ic') + '<span>Saarthi has <b>' + pendingOps() + '</b> suggestions.</span><button class="btn sm x" data-act="nav" data-v="saarthi">Open</button></div>';
   if (yday && yday.close && yday.close.mit && isToday) top += '<div class="al" style="margin-bottom:10px">★ <span>Today\'s MIT (from last night): <b>' + esc(yday.close.mit) + '</b></span></div>';
   if (d.untracked) top += '<div class="untracked">' + ic('lock', 's-ic') + '<span>Not tracked. DayBox was not used this day.</span><button class="btn sm" data-act="track-empty">Add what happened</button><button class="btn sm" data-act="track-routine">Fill from routine</button></div>';
