@@ -826,83 +826,27 @@ function viewWeek() {
   return {
     title: 'Week', sub: fmtShort(WEEK) + ' – ' + fmtShort(end),
     actions: '<button class="iconbtn" data-act="wprev" aria-label="Previous week">' + ic('left') + '</button><button class="iconbtn" data-act="wnext" aria-label="Next week">' + ic('right') + '</button>' + (WEEK === weekStart(t) ? '' : '<button class="btn" data-act="wtoday">This week</button>'),
-    body, after() { bindDrag(); $$('#picks [data-f="pick"]').forEach(s => { s.onchange = () => { const tx = s.parentNode.querySelector('[data-f="text"]'); tx.hidden = s.value !== 'other'; if (!tx.hidden) tx.focus(); }; }); },
+    body, after() { bindDrag(); },
   };
 }
-const PLAN_DEF = { career: [0, 600], relationship: [2, 1230], self: [3, 420], big: [5, 900], little: [4, 1020] };
-const PLAN_HINT = {
-  career: 'One thing that moves work forward.', relationship: 'One thing for one person (partner, kid, friend).', self: 'One thing just for you.',
-  big: '3-4 hours, weekend. Could you describe it a month later?', little: '1 hour, Friday 17:00 by default.',
-};
-/* what each line picks from: the lists you already keep */
-function pickSources(k) {
-  const live = i => !i.deleted, by = f => CFG.items.filter(i => live(i) && f(i)).map(i => ['item:' + i.id, i.title, i.cat]);
-  const tf = X.tfGoals(CFG, TF).map(g => ['tf:' + g.id, g.name + (g.mini && g.mini !== g.name ? ' · ' + g.mini : ''), g.cat]);
-  return {
-    career: [['Tenfold nuggets', tf], ['Regular', by(i => i.kind === 'regular')]],
-    relationship: [['Family', by(i => i.cat === 'family')], ['Dreams', by(i => i.kind === 'dream' && i.cat !== 'family')]],
-    self: [['Hobbies', by(i => i.kind === 'fun' && i.cat === 'hobby')], ['Self', by(i => i.cat === 'self')]],
-    big: [['Dreams', by(i => i.kind === 'dream')], ['Leisure', by(i => i.kind === 'fun' && i.cat === 'leisure')]],
-    little: [['Dreams', by(i => i.kind === 'dream')], ['Leisure', by(i => i.kind === 'fun' && i.cat === 'leisure')]],
-  }[k] || [];
-}
+const PLAN_HINT = { career: 'Moves a goal forward.', relationship: 'Time for one person.', self: 'Just for you.', big: '2h or more, a day with free time.', little: 'Under 2h.' };
+/* this week's picks: drawn by DayBox and frozen for the week, nothing to choose. Shows where each one sits. */
 function picksCard(ws) {
-  const t = today(), wp = CFG.weekPlans[ws] || {};
-  const dates = [0, 1, 2, 3, 4, 5, 6].map(i => addDays(ws, i));
-  const rows = Object.keys(X.WEEK_SLOTS).filter(k => !X.WEEK_SLOTS[k].old || wp[k]).map(k => {
-    const m = X.WEEK_SLOTS[k], v = wp[k] || {}, def = PLAN_DEF[k] || [0, 600], src = pickSources(k);
-    const sel = v.itemId ? (String(v.itemId).startsWith('tf:') ? v.itemId : 'item:' + v.itemId) : v.text ? 'other' : '';
-    const known = src.some(([, list]) => list.some(o => o[0] === sel));
-    const pick = known || sel === '' ? sel : 'other';
-    const dsel = v.text ? (v.date || '') : dates[def[0]], st = v.text ? v.start : def[1], du = v.dur || m.dur;
-    const tag = v.skip ? '<span class="chip">skipped this week</span>' : v.auto ? '<span class="chip pk-auto" title="Drawn by DayBox">drawn</span>' : v.text ? '<span class="chip">yours</span>' : '';
-    const ctl = k === 'younight' ? '' : '<span class="pk-ctl"><button type="button" class="btn ghost sm" data-act="pkroll" data-k="' + k + '" title="Draw another" aria-label="Draw another">↻</button>' + (v.skip ? '' : '<button type="button" class="btn ghost sm" data-act="pkskip" data-k="' + k + '" title="Skip this week" aria-label="Skip this week">×</button>') + '</span>';
-    return '<div class="pk' + (v.skip ? ' off' : '') + '" data-k="' + k + '" style="--c:' + catOf(CFG, m.cat).color + '"><div class="pk-h"><span class="chip"><i></i>' + m.label + '</span>' + tag + '<span class="muted small" style="flex:1">' + (PLAN_HINT[k] || 'From an older plan.') + '</span>' + ctl + '</div>'
-      + '<div class="pk-row"><select data-f="pick"><option value="">Not this week</option>' + src.filter(([, l]) => l.length).map(([g, l]) => '<optgroup label="' + esc(g) + '">' + l.map(o => '<option value="' + esc(o[0]) + '"' + (o[0] === pick ? ' selected' : '') + '>' + esc(o[1]) + '</option>').join('') + '</optgroup>').join('') + '<option value="other"' + (pick === 'other' ? ' selected' : '') + '>Something else...</option></select>'
-      + '<input type="text" data-f="text" placeholder="What?" value="' + esc(pick === 'other' ? v.text || '' : '') + '"' + (pick === 'other' ? '' : ' hidden') + '>'
-      + '<select data-f="date"><option value="">Any day</option>' + dates.map(dd => '<option value="' + dd + '"' + (dd === dsel ? ' selected' : '') + (dd < t ? ' disabled' : '') + '>' + fmtShort(dd) + '</option>').join('') + '</select>'
-      + '<input type="time" step="300" data-f="start" value="' + (st != null ? hm(st) : '') + '" title="Empty: Saarthi finds the time">'
-      + '<select data-f="dur">' + (DURS.includes(du) ? DURS : DURS.concat(du).sort((a, b) => a - b)).map(x => '<option value="' + x + '"' + (x === du ? ' selected' : '') + '>' + durTxt(x) + '</option>').join('') + '</select></div></div>';
+  const wp = CFG.weekPlans[ws] || {}, dates = [0, 1, 2, 3, 4, 5, 6].map(i => addDays(ws, i));
+  const where = v => {
+    for (const k of dates) { const b = day(k).blocks.find(x => X.live(x) && ((v.itemId && x.itemId === v.itemId) || norm(x.title) === norm(v.text))); if (b) return fmtShort(k) + ' ' + hm(b.start); }
+    return null;
+  };
+  const rows = Object.keys(X.WEEK_SLOTS).filter(k => !X.WEEK_SLOTS[k].old || (wp[k] && wp[k].text)).map(k => {
+    const m = X.WEEK_SLOTS[k], v = wp[k];
+    const c = v && v.text ? catOf(CFG, v.cat || m.cat) : catOf(CFG, m.cat);
+    const at = v && v.text ? where(v) : null;
+    return '<div class="pk" style="--c:' + c.color + '"><span class="chip"><i></i>' + m.label + '</span>'
+      + (v && v.text ? '<div class="pk-t"><b>' + esc(v.text) + '</b><span class="muted small">' + durTxt(v.dur || m.dur) + (PLAN_HINT[k] ? ' · ' + PLAN_HINT[k] : '') + '</span></div><span class="pk-at' + (at ? ' on' : '') + '">' + (at ? esc(at) : 'Saarthi places it') + '</span>'
+        : '<div class="pk-t muted small">Nothing to draw. Add to its list in Bank.</div><span></span>') + '</div>';
   }).join('');
-  return '<div class="card picks" id="picks" data-ws="' + ws + '"><div class="row" style="margin-bottom:6px"><h3 style="margin:0;flex:1">Picks for this week</h3><button class="btn pri sm" data-act="plansave">Save picks</button></div>'
-    + '<p class="hint" style="margin:0 0 10px">DayBox draws each line from your lists: random, but what you did least lately and what is behind your balance get more chances, and nothing repeats within 2 weeks. ↻ draws another, × skips it, or pick one yourself. No day or time: Saarthi\'s week plan finds the slot.</p>' + rows + '</div>';
-}
-function savePlan() {
-  const box = $('#picks'); if (!box) return;
-  const ws = box.dataset.ws, t = today(), wp = {}, L = X.WEEK_SLOTS;
-  const find = v => { for (const k of Object.keys(L)) for (const [, l] of pickSources(k)) { const o = l.find(x => x[0] === v); if (o) return o; } return null; };
-  for (const c of $$('.pk[data-k]', box)) {
-    const g = f => c.querySelector('[data-f="' + f + '"]').value, pick = g('pick'), k = c.dataset.k;
-    if (!pick) { if (k !== 'younight') wp[k] = { skip: true }; continue; } // "Not this week" = skipped, so it is not drawn again
-    let text, itemId = null, cat = null;
-    if (pick === 'other') { text = g('text').trim(); if (!text) continue; }
-    else { const o = find(pick); if (!o) continue; text = o[1]; cat = o[2]; itemId = pick.startsWith('tf:') ? pick : pick.slice(5); }
-    const date = g('date') || null, sv = g('start');
-    wp[k] = { text, itemId, cat, date, start: date && sv ? toMin(sv) : null, dur: +g('dur') };
-    const old = (CFG.weekPlans[ws] || {})[k]; // an untouched draw stays a draw
-    if (old && old.auto && String(old.itemId) === String(itemId)) Object.assign(wp[k], { auto: true, roll: old.roll || 0 });
-  }
-  const base = Object.assign({}, CFG, { weekPlans: {} });
-  for (const k of Object.keys(wp)) {
-    const v = wp[k]; if (!v.date || v.start == null) continue;
-    const cand = { start: v.start, dur: v.dur };
-    const fixed = X.buildDay(base, v.date).blocks.filter(b => b.src === 'rule' && !(k === 'little' && /little adventure/i.test(b.title)));
-    const cl = X.clashWith(fixed, cand) || Object.keys(wp).filter(j => j !== k && wp[j].date === v.date && wp[j].start != null).map(j => ({ title: L[j].label, start: wp[j].start, dur: wp[j].dur })).find(o => X.overlaps(o, cand));
-    if (cl) return toast(L[k].label + ' on ' + fmtShort(v.date) + ' overlaps ' + clashTxt(cl) + '. Change its time, or leave the time empty.', null, null, 8000);
-  }
-  CFG.weekPlans[ws] = wp; saveCfg();
-  for (let i = 0; i < 7; i++) {
-    const date = addDays(ws, i), d = DAYS[date];
-    if (!d || date < t) continue;
-    d.blocks = d.blocks.filter(b => b.src !== 'week');
-    const items = X.weekItemsFor(CFG, date);
-    if (items.some(w => w.wk === 'little')) d.blocks = d.blocks.filter(b => !(b.src === 'rule' && b.status === 'planned' && /little adventure/i.test(b.title)));
-    items.forEach(w => d.blocks.push(X.blockFrom(w, Object.assign({ src: 'week', wk: w.wk }, w.itemId ? { itemId: w.itemId } : {}))));
-    sortBlocks(d); saveDay(d);
-  }
-  const n = Object.keys(wp).length, open = Object.values(wp).filter(v => v.start == null).length;
-  toast(n + ' picks saved' + (open ? ', ' + open + ' for Saarthi to place' : ''));
-  render();
+  return '<div class="card picks" id="picks" data-ws="' + ws + '"><h3 style="margin:0 0 4px">Picks for this week</h3>'
+    + '<p class="hint" style="margin:0 0 8px">Drawn by DayBox from your lists and fixed for the week: what you did least lately and what is behind your balance get more chances, nothing repeats within 2 weeks. Saarthi\'s week plan finds the time.</p>' + rows + '</div>';
 }
 
 /* ---------- bank ---------- */
@@ -1459,10 +1403,7 @@ const ACTS = {
   tab: a => { TAB[a.dataset.g] = a.dataset.k; render(); },
   item: a => openItem(a.dataset.id, a.dataset.kind),
   planit: a => planIt(a.dataset.id),
-  pkroll: a => { const ws = $('#picks').dataset.ws; if (X.rerollPick(CFG, STORE, TF, ws, a.dataset.k, today())) { saveCfg(); render(); } else toast('Nothing else to draw for ' + X.WEEK_SLOTS[a.dataset.k].label + '. Add more to its list.'); },
-  pkskip: a => { const ws = $('#picks').dataset.ws, wp = CFG.weekPlans[ws] = CFG.weekPlans[ws] || {}; wp[a.dataset.k] = { skip: true }; saveCfg(); render(); },
   boredsave: () => { CFG.boredom = $('#boredTxt').value.split('\n').map(x => x.trim()).filter(Boolean); saveCfg(); toast('Saved'); },
-  plansave: savePlan,
   rule: a => openRule(a.dataset.id),
   ruledel: a => { const r = CFG.rules.find(x => x.id === a.dataset.id); if (r) confirmDel(r.title, 'All its versions go, and its planned blocks from today. Days you already saved keep it.', () => delRule(r.id)); },
   opacc: a => decideOp(+a.dataset.i, true),

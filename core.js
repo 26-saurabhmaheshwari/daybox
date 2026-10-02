@@ -301,19 +301,6 @@ function autoPicks(cfg, store, tf, ws, today) {
   if (changed) { cfg.weekPlans = cfg.weekPlans || {}; cfg.weekPlans[ws] = wp; }
   return changed;
 }
-/* ↻ on one line: draw again (a new roll), keeping the other lines */
-function rerollPick(cfg, store, tf, ws, k, today) {
-  const wp = (cfg.weekPlans || {})[ws] || {}, v = wp[k] || {}, taken = new Set();
-  Object.keys(wp).forEach(j => { const x = wp[j]; if (j !== k && x && x.itemId) taken.add(String(x.itemId).startsWith('tf:') ? x.itemId : 'item:' + x.itemId); });
-  if (v.itemId) taken.add(String(v.itemId).startsWith('tf:') ? v.itemId : 'item:' + v.itemId); // not the same one again
-  const roll = (v.roll || 0) + 1;
-  let p = drawPick(cfg, store, tf, ws, k, today, taken, roll);
-  if (!p && v.itemId) p = drawPick(cfg, store, tf, ws, k, today, new Set([...taken].filter(x => !x.endsWith(String(v.itemId).replace(/^tf:/, '')))), roll);
-  if (!p) return false;
-  cfg.weekPlans = cfg.weekPlans || {};
-  cfg.weekPlans[ws] = Object.assign({}, wp, { [k]: Object.assign({ date: null, start: null, auto: true, roll }, p) });
-  return true;
-}
 /* ---------- no overlaps: helpers ---------- */
 const overlaps = (a, b) => a.start < b.start + b.dur && b.start < a.start + a.dur;
 function clashWith(blocks, cand, ignoreId) {
@@ -912,7 +899,7 @@ root.DBX = {
   pad, dkey, parseKey, addDays, dow, weekStart, hm, toMin, durTxt, hrs, clamp, clone, uid, DOW, norm, zoneOf,
   seedConfig, mergeConfig, migrateTemplates, catOf, liveCats, isSleep, isWaste, freeCats, addCat, deleteCat, catUse, SEED_CATS, SEED_TYPES, FIXED_TYPES, liveTypes, typeOf, addType, deleteType, SHUTDOWN, WEEK_SLOTS,
   overlaps, clashWith, carve, ruleClash, makeRoom, backupSlot,
-  activeRules, templateFor, attachObjs, blockFrom, weekItemsFor, pickPool, drawPick, autoPicks, rerollPick, buildDay, getDay, planSnapshot, lockIfDue, resetDay,
+  activeRules, templateFor, attachObjs, blockFrom, weekItemsFor, pickPool, drawPick, autoPicks, buildDay, getDay, planSnapshot, lockIfDue, resetDay,
   editRule, endRule, deleteRule, ruleLive, lanes, live, intervals, unionMin, gaps,
   tfGoals, tfCatId, ensureTfCats, candidates, matches, lastDone, hoursDone, funMin, weekDays, itemCount, balanceState, suggest, backupOffers, useBackup, fillDay, placeBlock,
   missedYesterday, principleChecks, actualMin, dayStats, trackedDays, rangeReport, direction, streaks,

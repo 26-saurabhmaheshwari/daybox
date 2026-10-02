@@ -263,7 +263,7 @@ t('ops: editItem renames a bank item, removeItem deletes it', () => {
   assert(X.applyOp(m, { days: {} }, { type: 'editItem', title: 'nope', patch: {} }, TODAY).error);
   X.applyOp(m, { days: {} }, { type: 'removeItem', title: 'painting & mandala' }, TODAY); assert(m.items[0].deleted);
 });
-t('picks lottery: fixed per week, no repeats across lines, cooldown, keeps hand-set lines, reroll changes one', () => {
+t('picks lottery: fixed per week, no repeats across lines, cooldown, keeps lines already set', () => {
   const m = X.seedConfig(); m.weekPlans = {};
   m.items = ['Trek', 'Picnic', 'Fort', 'Lake'].map((t, i) => ({ id: 'l' + i, kind: 'fun', title: t, cat: 'leisure', min: i < 2 ? 240 : 45 })).concat({ id: 's0', kind: 'fun', title: 'Journal', cat: 'self' });
   const ws = X.addDays(X.weekStart(TODAY), 7), st = { days: {} };
@@ -276,8 +276,6 @@ t('picks lottery: fixed per week, no repeats across lines, cooldown, keeps hand-
   // hand-set line stays
   a.weekPlans[ws].little = { text: 'Lake', itemId: 'l3', cat: 'leisure', date: null, start: null, dur: 45 };
   assert(!X.autoPicks(a, st, null, ws, TODAY)); assert.strictEqual(a.weekPlans[ws].little.text, 'Lake');
-  // reroll changes only that line
-  const before = a.weekPlans[ws].big.itemId; assert(X.rerollPick(a, st, null, ws, 'big', TODAY)); assert.notStrictEqual(a.weekPlans[ws].big.itemId, before); assert.strictEqual(a.weekPlans[ws].little.text, 'Lake');
   // cooldown: what was picked last week is not drawn this week
   const ws2 = X.addDays(ws, 7); X.autoPicks(a, st, null, ws2, TODAY);
   const last = new Set(Object.values(a.weekPlans[ws]).map(v => v.itemId));
