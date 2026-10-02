@@ -508,6 +508,7 @@ function cellBlock(blocks, m) {
   blocks.forEach(b => {
     if (b.status === 'moved') return;
     const o = Math.min(b.start + b.dur, m + 30) - Math.max(b.start, m);
+    if (o < Math.min(5, b.dur)) return;  // a 1-4 min spill into the next cell is not worth a sliver
     if (o > bo || (o === bo && o > 0 && X.live(b) && best && !X.live(best))) { best = b; bo = o; }
   });
   return bo > 0 ? best : null;
@@ -614,6 +615,7 @@ function bindDrag() {
       if (!armed) { if (Math.hypot(ev.clientX - x0, ev.clientY - y0) > 8) off(); return; }
       if (!ghost) {
         if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 6) return;
+        try { getSelection().removeAllRanges(); } catch (_) {}
         ghost = document.createElement('div'); ghost.className = 'drag-ghost'; ghost.textContent = src.dataset.label; document.body.appendChild(ghost);
         DRAGGING = true; document.body.classList.add('dragging-task');
       }
@@ -653,9 +655,10 @@ function nowBarHtml(d, stats) {
   else if (cur) { title = esc(cur.title); from = cur.start; to = cur.start + cur.dur; left = durTxt(to - nm) + ' left'; }
   else { label = 'FREE NOW'; title = next ? 'Until ' + esc(next.title) : 'Until bedtime'; from = nm; to = next ? next.start : s.bedtime; left = durTxt(to - nm); }
   const pct = clamp(Math.round((nm - from) / Math.max(1, to - from) * 100), 0, 100);
-  // free: the "free" stat already says how long, so the bar shows only from / to
-  return '<div class="nowcard" id="nowbar"><div class="nc-main"><span class="nc-l">' + label + '</span><span class="nc-t">' + title + '</span></div>'
-    + '<div class="nc-bar"><div class="nc-track"><i style="width:' + (cur ? pct : 0) + '%"></i></div><div class="nc-times"><span>' + hm(from) + '</span>' + (label === 'FREE NOW' ? '' : '<span>' + left + '</span>') + '<span>' + hm(to) + '</span></div></div>'
+  // free: no bar (nothing to fill), only the end time; the "free" stat already says how long
+  const free = label === 'FREE NOW';
+  return '<div class="nowcard" id="nowbar"><div class="nc-main"><span class="nc-l">' + label + '</span><span class="nc-t">' + title + '</span>' + (free ? '<span class="nc-to">' + hm(to) + '</span>' : '') + '</div>'
+    + (free ? '' : '<div class="nc-bar"><div class="nc-track"><i style="width:' + pct + '%"></i></div><div class="nc-times"><span>' + hm(from) + '</span><span>' + left + '</span><span>' + hm(to) + '</span></div></div>')
     + '<div class="nc-stats">' + (stats || '') + '</div><button class="nc-btn" data-act="bored">Bored?</button></div>';
 }
 function openAddTask() {
@@ -692,7 +695,7 @@ function viewToday() {
   const dnav = '<span class="dnav' + (isToday ? '' : ' off') + '"><span class="dn-row"><button type="button" class="dn-a" data-act="prev" aria-label="Previous day">' + ic('left') + '</button>'
     + '<button type="button" class="dn-mid" data-act="gotoday" title="' + (isToday ? 'Today' : 'Not today. Tap to go back to today') + '">' + dateTxt + '</button>'
     + '<button type="button" class="dn-a" data-act="next" aria-label="Next day">' + ic('right') + '</button></span></span>';
-  const actions = '<button class="btn" data-act="print" aria-label="Print" title="Print">' + ic('print') + '</button>'
+  const actions = '<button class="btn ghost" data-act="print" aria-label="Print" title="Print">' + ic('print') + '</button>'
     + (CUR <= t ? '<button class="btn pri" data-act="close">Close day</button>' : '');
   let top = '';
   if (!localStorage.getItem(LS_ONB)) top += '<div class="card inbox" style="margin-bottom:12px"><h3>Welcome to DayBox</h3><ol class="small" style="margin:0 0 10px;padding-left:18px"><li>Sign in with Google (the same account as Tenfold) so it syncs to your phone.</li><li>When a block ends, tap ✓ or ✗. That is all the logging.</li><li>Bored or free? Press <b>What now?</b></li></ol><div class="row"><button class="btn pri sm" data-act="signin">Sign in</button><button class="btn ghost sm" data-act="onb">Got it</button></div></div>';
