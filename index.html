@@ -255,6 +255,8 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 .fb-cap{flex:none;width:40px;min-height:112px;border-radius:20px;display:flex;flex-direction:column;align-items:center;gap:10px;padding:5px 0 14px;background:var(--accent-soft);color:color-mix(in srgb,var(--accent) 60%,var(--ink))}
 .fb-cap.sa:not(:has(.fb-add)){padding-top:14px}
 .fb-cap .fb-add.sa{background:var(--good)}
+.fb-cap .fb-add.busy{cursor:default;animation:fbpulse 1.2s ease-in-out infinite}
+@keyframes fbpulse{50%{opacity:.45}}
 .fb-cap.sa{background:color-mix(in srgb,var(--good) 13%,var(--surface));color:color-mix(in srgb,var(--good) 70%,var(--ink))}
 .fb-cap .fb-add{width:30px;height:30px;box-shadow:none}
 .fb-cap .fb-add svg{width:16px;height:16px}
@@ -517,6 +519,7 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
     pushDay: (k, d) => need().then(() => setDoc(doc(db, 'planner', uid, 'days', k), d)),
     pushInbox: o => need().then(() => setDoc(doc(db, 'planner', uid, 'meta', 'inbox'), o)),
     loadInbox: () => need().then(() => getDoc(doc(db, 'planner', uid, 'meta', 'inbox'))).then(s => s.exists() ? s.data() : null),
+    pushAsk: o => need().then(() => setDoc(doc(db, 'planner', uid, 'meta', 'ask'), o)),
     pushHistory: (id, o) => need().then(() => setDoc(doc(db, 'planner', uid, 'history', id), o)),
   };
   onAuthStateChanged(auth, async user => {
@@ -537,6 +540,9 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
       unsub = [
         onSnapshot(doc(db, 'planner', uid, 'meta', 'config'), s => { if (!s.metadata.hasPendingWrites && s.exists()) ev('dbx-cloud', { config: s.data(), live: true }); }),
         onSnapshot(doc(db, 'planner', uid, 'meta', 'inbox'), s => { if (!s.metadata.hasPendingWrites) ev('dbx-inbox', s.exists() ? s.data() : null); }),
+        // the Saarthi +: ask state, and the PC watcher's heartbeat
+        onSnapshot(doc(db, 'planner', uid, 'meta', 'ask'), s => { if (!s.metadata.hasPendingWrites) ev('dbx-ask', s.exists() ? s.data() : null); }),
+        onSnapshot(doc(db, 'planner', uid, 'meta', 'watcher'), s => ev('dbx-watcher', s.exists() ? s.data() : null)),
         onSnapshot(collection(db, 'planner', uid, 'days'), qs => {
           if (qs.metadata.hasPendingWrites) return;
           const ch = {}; qs.docChanges().forEach(x => { if (x.type !== 'removed') ch[x.doc.id] = x.doc.data(); });
@@ -571,7 +577,7 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 <div id="ov" hidden><div id="sheet" role="dialog" aria-modal="true"></div></div>
 <div id="toast" hidden></div>
 <div id="printArea"></div>
-<script src="core.js?v=47"></script>
-<script src="app.js?v=47"></script>
+<script src="core.js?v=48"></script>
+<script src="app.js?v=48"></script>
 </body>
 </html>
