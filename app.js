@@ -35,6 +35,7 @@ let CUR = today();
 let WEEK = weekStart(today());
 let PLAN_WS = null;
 let TAB = { bank: 'regular', routine: 'templates', insights: '7' };
+if (VIEW === 'plan') { VIEW = 'bank'; TAB.bank = 'week'; } // Week plan moved into Bank
 let SCROLL_NOW = true;
 let DRAGGING = false;
 let TIPS_OPEN = false, AG_DAY = null;
@@ -146,11 +147,11 @@ const IC = {
 const ic = (n, cls) => '<svg class="' + (cls || '') + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + IC[n] + '</svg>';
 
 const VIEWS = [
-  { id: 'today', name: 'Today', ic: 'today' }, { id: 'week', name: 'Week', ic: 'week' }, { id: 'plan', name: 'Week plan', ic: 'plan' },
+  { id: 'today', name: 'Today', ic: 'today' }, { id: 'week', name: 'Week', ic: 'week' },
   { id: 'bank', name: 'Bank', ic: 'bank' }, { id: 'routine', name: 'Routine', ic: 'routine' }, { id: 'insights', name: 'Insights', ic: 'insights' },
   { id: 'saarthi', name: 'Saarthi', ic: 'saarthi' }, { id: 'settings', name: 'Settings', ic: 'settings' },
 ];
-function setView(v) { VIEW = VIEWS.some(x => x.id === v) ? v : 'today'; localStorage.setItem(LS_VIEW, VIEW); if (VIEW === 'today') SCROLL_NOW = true; closeSheet(); render(); scrollTo(0, 0); }
+function setView(v) { if (v === 'plan') { v = 'bank'; TAB.bank = 'week'; } VIEW = VIEWS.some(x => x.id === v) ? v : 'today'; localStorage.setItem(LS_VIEW, VIEW); if (VIEW === 'today') SCROLL_NOW = true; closeSheet(); render(); scrollTo(0, 0); }
 
 /* ---------- toast + sheet ---------- */
 let toastT = null;
@@ -884,10 +885,10 @@ function itemMeta(it) {
   return esc(c.name) + ' · ' + durTxt(it.min || 30) + (it.kind === 'regular' ? ' · ' + (it.perWeek || 3) + 'x/week' : '') + ' · ' + (it.energy === 'deep' ? 'deep focus' : 'light') + (it.zone && it.zone !== 'any' ? ' · ' + it.zone : '') + (it.needs ? ' · needs ' + esc(it.needs) : '');
 }
 function viewBank() {
-  const tab = ['goals', 'nongoals', 'balance', 'boredom'].includes(TAB.bank) ? TAB.bank : 'goals', t = today();
+  const tab = ['goals', 'nongoals', 'week', 'balance', 'boredom'].includes(TAB.bank) ? TAB.bank : 'goals', t = today();
   const days = X.weekDays(STORE, CFG, t, t);
   syncTfCats();
-  const tabs = [['goals', 'Goals'], ['nongoals', 'Non goals'], ['balance', 'Balance'], ['boredom', 'Boredom list']];
+  const tabs = [['goals', 'Goals'], ['nongoals', 'Non goals'], ['week', 'Week plan'], ['balance', 'Balance'], ['boredom', 'Boredom list']];
   let body = '<div class="tabs">' + tabs.map(([k, l]) => '<button class="' + (tab === k ? 'on' : '') + '" data-act="tab" data-g="bank" data-k="' + k + '">' + l + '</button>').join('') + '</div>';
   const itemRow = (it, right) => { const c = catOf(CFG, it.cat); return '<div class="li" style="--c:' + c.color + '"><span class="sw"></span><div data-act="item" data-id="' + it.id + '" style="cursor:pointer"><div class="t">' + esc(it.title) + '</div><div class="m">' + itemMeta(it) + '</div></div>' + right + '</div>'; };
   const addBtn = (kind, cat) => '<div style="margin-top:10px"><button class="btn pri sm" data-act="item" data-kind="' + kind + '"' + (cat ? ' data-cat="' + cat + '"' : '') + '>' + ic('plus') + 'Add</button></div>';
@@ -916,6 +917,10 @@ function viewBank() {
         + (list.length ? list.map(it => '<div class="li fun" style="--c:' + catOf(CFG, cat).color + '"><span class="sw"></span><div><div class="t">' + esc(it.title) + '</div><div class="m">' + doneTxt(it) + '</div></div><button type="button" class="btn ghost sm" data-fundel="' + it.id + '" aria-label="Remove ' + esc(it.title) + '">×</button></div>').join('') : '<div class="empty">Nothing here yet.</div>')
         + '</div><div class="row fun-add" style="margin-top:10px"><input type="text" data-funnew="' + cat + '" placeholder="' + ph + '" maxlength="40"><button type="button" class="btn pri sm" data-funadd="' + cat + '">' + ic('plus') + 'Add</button></div></div>';
     });
+  } else if (tab === 'week') {
+    // one weekly sitting: the 6 big lines for the week (Saarthi's nightly plan fills the gaps around them)
+    const p = viewPlan();
+    body += '<div class="row" style="margin-bottom:10px"><b style="flex:1">' + esc(p.sub) + '</b>' + p.actions + '</div>' + p.body;
   } else if (tab === 'balance') {
     const free = X.liveCats(CFG).filter(c => c.type !== 'office' && c.type !== 'sleep' && !X.isWaste(CFG, c.id)), b = CFG.settings.balance;
     const sum = free.reduce((a, c) => a + (+b[c.id] || 0), 0);
@@ -1368,7 +1373,7 @@ setInterval(tick, 15000);
 /* ---------- actions ---------- */
 const ACTS = {
   nav: a => setView(a.dataset.v),
-  more: () => openSheet('<div class="sh-h"><h2>More</h2><button class="iconbtn" data-x aria-label="Close">×</button></div><div class="list">' + ['plan', 'routine', 'saarthi', 'settings'].map(id => { const v = VIEWS.find(x => x.id === id); return '<button class="nv" data-act="nav" data-v="' + id + '" style="padding:12px">' + ic(v.ic) + '<span>' + v.name + '</span>' + (id === 'saarthi' && pendingOps() ? '<span class="badge">' + pendingOps() + '</span>' : '') + '</button>'; }).join('') + '</div>'),
+  more: () => openSheet('<div class="sh-h"><h2>More</h2><button class="iconbtn" data-x aria-label="Close">×</button></div><div class="list">' + ['routine', 'saarthi', 'settings'].map(id => { const v = VIEWS.find(x => x.id === id); return '<button class="nv" data-act="nav" data-v="' + id + '" style="padding:12px">' + ic(v.ic) + '<span>' + v.name + '</span>' + (id === 'saarthi' && pendingOps() ? '<span class="badge">' + pendingOps() + '</span>' : '') + '</button>'; }).join('') + '</div>'),
   prev: () => { CUR = addDays(CUR, -1); SCROLL_NOW = true; render(); },
   next: () => { CUR = addDays(CUR, 1); SCROLL_NOW = true; render(); },
   noop: () => {},
