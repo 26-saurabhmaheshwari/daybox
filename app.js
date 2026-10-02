@@ -881,7 +881,7 @@ function viewBank() {
     body += '<div class="card"><h3>Dreams</h3><p class="hint">Places, people, things to try. Nothing to tick off: DayBox keeps giving them time by your balance.</p><div class="list">'
       + (dr.length ? dr.map(it => { const c = catOf(CFG, it.cat); return '<div class="li" style="--c:' + c.color + '"><span class="sw"></span><div data-act="item" data-id="' + it.id + '" style="cursor:pointer"><div class="t">' + esc(it.title) + '</div><div class="m">' + esc(c.name) + ' · ' + doneTxt(it) + '</div></div><button class="btn sm" data-act="planit" data-id="' + it.id + '">Plan it</button></div>'; }).join('') : '<div class="empty">Nothing here yet.</div>')
       + '</div>' + addBtn('dream') + '</div>';
-    [['hobby', 'Hobbies', 'e.g. Guitar'], ['leisure', 'Leisure', 'e.g. Movie'], ['self', 'Self', 'e.g. Journaling']].forEach(([cat, name, ph]) => {
+    [['hobby', 'Hobbies', 'e.g. Guitar'], ['leisure', 'Leisure', 'e.g. Movie'], ['self', 'Self', 'e.g. Journaling'], ['family', 'Family', 'e.g. Story time']].forEach(([cat, name, ph]) => {
       const list = items('fun').filter(i => i.cat === cat);
       body += '<div class="card"><h3>' + name + '</h3><p class="hint">Only the name. DayBox picks the length to fit the gap, and rotates them by your balance and what you did least lately.</p><div class="list">'
         + (list.length ? list.map(it => '<div class="li fun" style="--c:' + catOf(CFG, cat).color + '"><span class="sw"></span><div><div class="t">' + esc(it.title) + '</div><div class="m">' + doneTxt(it) + '</div></div><button type="button" class="btn ghost sm" data-fundel="' + it.id + '" aria-label="Remove ' + esc(it.title) + '">×</button></div>').join('') : '<div class="empty">Nothing here yet.</div>')
@@ -912,7 +912,7 @@ function viewBank() {
         b.onclick = () => { const v = inp.value.trim(); if (!v) return inp.focus(); CFG.items.push({ id: uid(), kind: 'fun', title: v, cat: b.dataset.funadd }); saveCfg(); render(); };
         inp.onkeydown = e => { if (e.key === 'Enter') b.click(); };
       });
-      $$('[data-fundel]').forEach(b => { const it = CFG.items.find(i => i.id === b.dataset.fundel); b.onclick = () => confirmDel(it.title, 'It leaves your ' + ({ leisure: 'Leisure', self: 'Self' }[it.cat] || 'Hobbies') + ' list. Past days keep it.', () => { it.deleted = true; saveCfg(); render(); toast('Removed ' + it.title, 'Undo', () => { it.deleted = false; saveCfg(); render(); }); }); });
+      $$('[data-fundel]').forEach(b => { const it = CFG.items.find(i => i.id === b.dataset.fundel); b.onclick = () => confirmDel(it.title, 'It leaves your ' + ({ leisure: 'Leisure', self: 'Self', family: 'Family' }[it.cat] || 'Hobbies') + ' list. Past days keep it.', () => { it.deleted = true; saveCfg(); render(); toast('Removed ' + it.title, 'Undo', () => { it.deleted = false; saveCfg(); render(); }); }); });
       $$('[data-bal]').forEach(r => {
         r.oninput = () => { $('#bv_' + r.dataset.bal).textContent = r.value + '%'; const sum = $$('[data-bal]').reduce((a, x) => a + +x.value, 0); $('#balSum').textContent = 'Total ' + sum + '% (it is scaled to 100%).'; };
         r.onchange = () => { CFG.settings.balance[r.dataset.bal] = +r.value; saveCfg(); render(); };
