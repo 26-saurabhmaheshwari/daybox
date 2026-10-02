@@ -148,6 +148,16 @@ t('mergeCloud: live partial snapshot never pushes untouched data', () => {
   const m = X.mergeCloud(l, { days: { b: { updated: 7 } }, partial: true });
   assert(!m.pushConfig); assert.strictEqual(m.pushDays.length, 0); assert.strictEqual(m.days.b.updated, 7);
 });
+t('placeBlock + addTodo', () => {
+  const c = X.clone(cfg), s = { days: {} };
+  const d = X.buildDay(c, '2026-10-05');
+  const b = X.placeBlock(c, d, { title: 'Report', min: 60, cat: 'office' }, 600);
+  assert(b && b.start >= 600 && b.dur === 60);
+  assert(X.gaps(d.blocks.filter(x => x !== b), 0, 1440, 1).some(g => g.start <= b.start && g.end >= b.start + 60));
+  assert.strictEqual(X.placeBlock(c, d, { title: 'Huge', min: 900 }, 600), null);
+  const r = X.applyOp(c, s, { type: 'addTodo', date: '2026-10-05', todo: { title: 'Call bank', min: 15 } }, TODAY);
+  assert.strictEqual(r.day.todo[0].title, 'Call bank');
+});
 t('my-routine.json loads', () => {
   if (!fs.existsSync(__dirname + '/my-routine.json')) return;
   const o = JSON.parse(read('my-routine.json')); const m = X.mergeConfig(o.config);

@@ -81,6 +81,7 @@ async function pull(nDays) {
     const k = X.addDays(t, -i), d = X.getDay(S, cfg, k, t);
     days.push({ date: k, day: X.DOW[X.dow(k)], state: d.untracked ? 'not tracked' : d.virtual ? 'preview from routine' : 'saved', template: d.tpl && d.tpl.name,
       sanyamSlip: slipDates.has(k) || undefined, slipNote: d.slipNote || undefined, closeLine: d.close && d.close.line || undefined, tomorrowMit: d.close && d.close.mit || undefined,
+      toFit: d.todo && d.todo.length ? d.todo.map(x => x.title + ' (' + (x.min || 30) + 'm' + (x.done ? ', done' : x.placed ? ', placed' : ', not placed') + ')') : undefined,
       blocks: d.blocks.slice().sort((a, b) => a.start - b.start).map(b => blk(cfg, b)) });
   }
   const week = X.weekDays(S, cfg, t, t);

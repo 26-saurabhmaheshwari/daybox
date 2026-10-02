@@ -348,6 +348,18 @@ function fillDay(cfg, store, tf, date, today, nowMin) {
   return { day, added };
 }
 
+/* put a task into the first free slot that fits, from `from` until bedtime */
+function placeBlock(cfg, day, item, from) {
+  const need = item.min || 30;
+  const g = gaps(day.blocks, from, cfg.settings.bedtime, need)[0];
+  if (!g) return null;
+  const b = { id: uid(), start: g.start, dur: need, title: item.title, cat: item.cat || 'goal', status: 'planned', attach: [], pillar: false, mit: false, src: item.src || 'todo' };
+  if (item.itemId) b.itemId = item.itemId;
+  day.blocks.push(b);
+  day.blocks.sort((a, c) => a.start - c.start);
+  return b;
+}
+
 /* ---------- principles ---------- */
 function missedYesterday(store, cfg, date) {
   const y = store.days[addDays(date, -1)];
@@ -585,6 +597,12 @@ function applyOp(cfg, store, op, today) {
     t.version = (t.version || 1) + 1;
     return { cfg: true };
   }
+  if (op.type === 'addTodo') {
+    const d = dayFor(op.date), x = op.todo || {};
+    if (!x.title) return { error: 'todo needs a title' };
+    d.todo = (d.todo || []).concat({ id: uid(), title: x.title, min: x.min || 30, cat: x.cat || 'goal', done: false, by: 'saarthi' });
+    return { day: d };
+  }
   if (op.type === 'addRule') {
     const r = Object.assign({ id: uid(), from: today, to: null, attach: [], pillar: false, backup: null, strict: false }, op.rule || {});
     if (!r.title || r.start == null || !r.dur || !Array.isArray(r.days) || !r.days.length) return { error: 'recurring block needs title, start, dur, days' };
@@ -607,7 +625,7 @@ root.DBX = {
   seedConfig, mergeConfig, catOf, SEED_CATS, SHUTDOWN, WEEK_SLOTS,
   activeRules, templateFor, attachObjs, blockFrom, weekItemsFor, buildDay, getDay, planSnapshot, lockIfDue, resetDay,
   editRule, endRule, ruleLive, lanes, live, intervals, unionMin, gaps,
-  tfGoals, candidates, matches, weekDays, itemCount, balanceState, suggest, backupOffers, useBackup, fillDay,
+  tfGoals, candidates, matches, weekDays, itemCount, balanceState, suggest, backupOffers, useBackup, fillDay, placeBlock,
   missedYesterday, principleChecks, actualMin, dayStats, trackedDays, rangeReport, direction, streaks,
   dayFeatures, sanyamHabits, sanyamAnalysis, mergeCloud, applyOp,
 };

@@ -171,7 +171,7 @@ function renderNav() {
     + '<button class="' + (tabs.includes(VIEW) ? '' : 'on') + '" data-act="more">' + ic('more') + '<span>More' + (pendingOps() ? ' •' : '') + '</span></button>';
   $('#fab').innerHTML = ic('spark') + 'What now?';
   $('#fab').dataset.act = 'whatnow';
-  $('#fab').hidden = VIEW === 'settings';
+  $('#fab').hidden = true;
   renderSync();
 }
 function renderSync() {
@@ -221,7 +221,7 @@ function gridHtml(cols, mode, ppm) {
     let html = c.blocks.map(b => blockHtml(b, L[b.id], c, mode, ppm)).join('');
     if (mode === 'day' && c.showGaps) {
       const from = c.date === t ? Math.max(s.dayStart, Math.ceil(nm / 15) * 15) : s.dayStart;
-      X.gaps(c.blocks, from, s.bedtime, 30).forEach(g => { html += '<button class="gap" type="button" data-gs="' + g.start + '" data-ge="' + g.end + '" style="top:' + ((g.start - s.dayStart) * ppm + 2) + 'px;height:' + ((g.end - g.start) * ppm - 4) + 'px">Free ' + durTxt(g.end - g.start) + ' · fill</button>'; });
+      X.gaps(c.blocks, from, s.bedtime, 30).forEach(g => { html += '<div class="gap" style="top:' + ((g.start - s.dayStart) * ppm + 2) + 'px;height:' + ((g.end - g.start) * ppm - 4) + 'px">Free ' + durTxt(g.end - g.start) + '</div>'; });
     }
     if (c.date === t && nm >= s.dayStart && nm <= s.dayEnd) html += '<div class="nowline" style="top:' + ((nm - s.dayStart) * ppm) + 'px"></div>';
     return '<div class="g-col ' + (c.past ? 'past ' : '') + (c.virtual ? 'virtual' : '') + '" data-ci="' + i + '" style="height:' + H + 'px">' + html + '</div>';
@@ -375,7 +375,7 @@ function openBlock(d, b, preset, tpl) {
     + '<label class="check" style="align-self:end;padding-bottom:8px"><input id="bStrict" type="checkbox"' + (src.strict ? ' checked' : '') + '> Strict, no backup</label></div>'
     + '<label class="field"><span>Small things attached (comma separated)</span><input id="bAttach" type="text" value="' + esc(X.attachObjs(src.attach).map(a => a.t).join(', ')) + '" placeholder="e.g. 10 min walk, stretch"></label>'
     + (d ? '<label class="field"><span>Note</span><input id="bNote" type="text" value="' + esc(src.note || '') + '"></label>' : '')
-    + (d && !isNew ? '<div class="field"><span>How did it go?</span><div class="stbtns">' + ['done', 'partial', 'skipped', 'moved'].map(s => '<button type="button" data-st="' + s + '" class="' + (b.status === s ? 'on' : '') + '">' + { done: 'Done', partial: 'Partial', skipped: 'Skipped', moved: 'Moved' }[s] + '</button>').join('') + '</div></div>' : '')
+    + (d && !isNew ? '<div class="field"><span>How did it go?</span><div class="stbtns">' + ['done', 'skipped'].map(s => '<button type="button" data-st="' + s + '" class="' + (b.status === s ? 'on' : '') + '">' + { done: 'Done', skipped: 'Skipped' }[s] + '</button>').join('') + '</div></div>' : '')
     + (canBackup ? '<button type="button" class="btn" data-backup>Use backup at ' + hm(Math.max(b.backup, d.date === t ? Math.ceil(nowMin() / 15) * 15 : 0)) + '</button>' : '')
     + (item && item.kind === 'dream' ? '<label class="check"><input id="bDream" type="checkbox"' + (item.done ? ' checked' : '') + '> Dream done, tick it off in the bank</label>' : '')
     + (isNew && d ? '<label class="check"><input id="bUnpl" type="checkbox"' + (lateNew ? ' checked' : '') + '> Unplanned (this is what really happened)</label>' : '')
@@ -497,7 +497,7 @@ function openClose(date) {
   const slip = slipOn(date);
   const html = '<div class="sh-h"><h2>Close the day</h2><span class="muted small">' + fmtShort(date) + '</span><button class="iconbtn" data-x aria-label="Close">×</button></div>'
     + '<div class="hint">Two minutes. Mark each block, add what really happened, write one line.</div>'
-    + (rows.length ? rows.map(b => '<div class="closer" data-id="' + b.id + '"><div><b>' + esc(b.title) + '</b> <span class="muted mono small">' + hm(b.start) + '–' + hm(b.start + b.dur) + '</span></div><div class="mini">' + [['done', '✓ Done'], ['partial', '½'], ['skipped', '✗'], ['planned', '–']].map(([s, l]) => '<button type="button" data-s="' + s + '" class="' + (b.status === s ? 'on' : '') + '" title="' + s + '">' + l + '</button>').join('') + '</div></div>').join('') : '<div class="empty">No blocks this day.</div>')
+    + (rows.length ? rows.map(b => '<div class="closer" data-id="' + b.id + '"><div><b>' + esc(b.title) + '</b> <span class="muted mono small">' + hm(b.start) + '–' + hm(b.start + b.dur) + '</span></div><div class="mini">' + [['done', '✓ Done'], ['skipped', '✗ Skipped'], ['planned', '–']].map(([s, l]) => '<button type="button" data-s="' + s + '" class="' + (b.status === s ? 'on' : '') + '" title="' + s + '">' + l + '</button>').join('') + '</div></div>').join('') : '<div class="empty">No blocks this day.</div>')
     + '<div class="lbl" style="margin:16px 0 6px">Add what really happened</div>'
     + '<div class="grid3"><input id="uTitle" type="text" placeholder="e.g. Scrolled phone"><select id="uCat">' + catOptions('waster') + '</select><div class="row" style="flex-wrap:nowrap"><input id="uStart" type="time" step="300" value="' + hm(Math.floor(nowMin() / 15) * 15) + '"><select id="uDur">' + DURS.map(x => '<option value="' + x + '"' + (x === 30 ? ' selected' : '') + '>' + durTxt(x) + '</option>').join('') + '</select></div></div>'
     + '<div style="margin-top:6px"><button type="button" class="btn sm" data-addu>' + ic('plus') + 'Add</button></div>'
@@ -541,11 +541,11 @@ function nowBarHtml(d) {
     const left = cur.start + cur.dur - nm, pct = Math.round((nm - cur.start) / cur.dur * 100);
     const chk = cur.checks ? ' · next check ' + hm(Math.ceil((nm + 1) / 30) * 30) + ' (3 min, timer first)' : '';
     return '<div class="nowbar" id="nowbar"><div><div class="now-t">Now: ' + esc(cur.title) + '</div><div class="now-s">' + durTxt(left) + ' left, ends ' + hm(cur.start + cur.dur) + chk + (next ? ' · then ' + esc(next.title) + ' ' + hm(next.start) : '') + '</div><div class="bar" style="--c:' + catOf(CFG, cur.cat).color + '"><i style="width:' + pct + '%"></i></div></div>'
-      + '<div class="acts"><button class="btn" data-act="done-cur" data-id="' + cur.id + '">' + ic('check') + 'Done</button><button class="btn" data-act="bored">Bored?</button><button class="btn pri" data-act="whatnow">' + ic('spark') + 'What now?</button></div></div>';
+      + '<div class="acts"><button class="btn" data-act="bored">Bored?</button></div></div>';
   }
   const until = next ? next.start : s.bedtime;
   return '<div class="nowbar" id="nowbar"><div><div class="now-t">Free now</div><div class="now-s">' + durTxt(until - nm) + ' until ' + (next ? esc(next.title) + ' at ' + hm(next.start) : 'bedtime ' + hm(s.bedtime)) + '. Pick it before boredom picks the phone.</div></div>'
-    + '<div class="acts"><button class="btn" data-act="bored">Bored?</button><button class="btn pri" data-act="whatnow">' + ic('spark') + 'What now?</button></div></div>';
+    + '<div class="acts"><button class="btn" data-act="bored">Bored?</button></div></div>';
 }
 function dismissed(date) { const o = load(LS_DISMISS) || {}; return o[date] || []; }
 function dayPpm() { return isPhone() ? 1.0 : 0.8; }
@@ -556,7 +556,7 @@ function agendaRow(d, b) {
   const isNow = d.date === t && b.start <= nm && b.start + b.dur > nm;
   let right = '';
   if (ended && !marked && b.cat !== 'sleep' && !d.virtual)
-    right = '<span class="qm">' + [['done', '✓', 'Done'], ['partial', '½', 'Partial'], ['skipped', '✗', 'Skipped']].map(([s, l, n]) => '<button type="button" data-act="qmark" data-id="' + b.id + '" data-s="' + s + '" title="' + n + '" aria-label="' + n + '">' + l + '</button>').join('') + '</span>';
+    right = '<span class="qm">' + [['done', '✓', 'Done'], ['skipped', '✗', 'Skipped']].map(([s, l, n]) => '<button type="button" data-act="qmark" data-id="' + b.id + '" data-s="' + s + '" title="' + n + '" aria-label="' + n + '">' + l + '</button>').join('') + '</span>';
   else if (marked)
     right = '<span class="row" style="gap:4px;flex-wrap:nowrap"><span class="chip st ' + b.status + '">' + b.status + '</span>' + (locked ? '<button type="button" class="ag-lock" data-act="agunlock" data-id="' + b.id + '" title="Unlock to change" aria-label="Unlock to change">' + ic('lock') + '</button>' : '') + '</span>';
   return '<div class="ag-row ' + (isNow ? 'is-now ' : '') + (locked ? 'locked ' : '') + 'st-' + (b.status || 'planned') + '" data-act="' + (locked ? 'noop' : 'agopen') + '" data-id="' + b.id + '" style="--c:' + c.color + '">'
@@ -565,7 +565,7 @@ function agendaRow(d, b) {
     + '<div class="ag-meta">' + hm(b.start) + '–' + hm(b.start + b.dur) + ' · ' + durTxt(b.dur) + ' · ' + esc(c.name) + (b.pillar && b.backup != null && !b.strict ? ' · backup ' + hm(b.backup) : '') + '</div></div>' + right + '</div>';
 }
 function gapRow(g) {
-  return '<div class="ag-gap"><span class="mono">' + hm(g.start) + '</span><span class="dash"></span><span>Free ' + durTxt(g.end - g.start) + '</span><button type="button" class="btn sm" data-act="aggap" data-gs="' + g.start + '" data-ge="' + g.end + '">Fill</button></div>';
+  return '<div class="ag-gap"><span class="mono">' + hm(g.start) + '</span><span class="dash"></span><span>Free ' + durTxt(g.end - g.start) + '</span></div>';
 }
 function agendaHtml(d) {
   const t = today(), nm = nowMin(), s = CFG.settings, isToday = d.date === t, past = d.date < t;
@@ -591,6 +591,49 @@ function agendaHtml(d) {
   h += '<div class="ag-add"><button type="button" class="btn sm" data-act="agadd">' + ic('plus') + 'Add block</button></div>';
   return h;
 }
+const blockOf = (d, x) => x.placed ? d.blocks.find(b => b.id === x.placed) : null;
+let SUGS = [];
+function fitFrom(d) { const s = CFG.settings, t = today(); return d.date === t ? Math.max(s.dayStart, Math.ceil(nowMin() / 15) * 15) : s.dayStart; }
+function fitHtml(d) {
+  const t = today(), s = CFG.settings;
+  if (d.date < t || d.untracked) return '';
+  const from = fitFrom(d);
+  const gs = X.gaps(d.blocks, from, s.bedtime, 15);
+  const freeMin = gs.reduce((a, g) => a + g.end - g.start, 0);
+  const todos = d.todo || [];
+  const open = todos.filter(x => !x.done && !blockOf(d, x));
+  const needMin = open.reduce((a, x) => a + (x.min || 30), 0);
+  let h = '<div class="ag fit"><div class="ag-h"><span>To fit ' + (d.date === t ? 'today' : fmtShort(d.date)) + '</span><span>' + (open.length ? open.length + ' to place · ' + durTxt(needMin) + ' · ' : '') + durTxt(freeMin) + ' free</span></div>';
+  if (needMin > freeMin * (1 - s.buffer) && open.length) h += '<div class="al warn" style="margin:8px 12px">' + durTxt(needMin) + ' to fit but only ' + durTxt(freeMin) + ' free. Pick what matters, move the rest to another day.</div>';
+  h += todos.map(x => {
+    const b = blockOf(d, x), done = x.done || (b && b.status === 'done'), c = catOf(CFG, x.cat);
+    return '<div class="fit-row ' + (done ? 'done' : '') + '" style="--c:' + c.color + '"><button type="button" class="fit-chk" data-act="fitdone" data-id="' + x.id + '" aria-label="Mark done">' + (done ? '✓' : '') + '</button>'
+      + '<div class="ag-main"><div class="ag-title"><span>' + esc(x.title) + '</span></div><div class="ag-meta">' + durTxt(x.min || 30) + ' · ' + esc(c.name) + (b ? ' · at ' + hm(b.start) : '') + (x.by === 'saarthi' ? ' · from Saarthi' : '') + '</div></div>'
+      + (b || done ? '<span></span>' : '<button type="button" class="btn sm pri" data-act="fitplace" data-id="' + x.id + '">Place</button>')
+      + '<button type="button" class="ag-lock" data-act="fitdel" data-id="' + x.id + '" aria-label="Remove">×</button></div>';
+  }).join('');
+  h += '<div class="fit-add"><input id="fitTitle" type="text" placeholder="Add a task to fit ' + (d.date === t ? 'today' : 'this day') + '" autocomplete="off" list="bTitles"><datalist id="bTitles">' + titleList() + '</datalist>'
+    + '<select id="fitMin" aria-label="Length">' + [15, 20, 30, 45, 60, 90, 120, 180].map(m => '<option value="' + m + '"' + (m === 30 ? ' selected' : '') + '>' + durTxt(m) + '</option>').join('') + '</select>'
+    + '<select id="fitCat" aria-label="Category">' + catOptions('office') + '</select><button type="button" class="btn sm pri" data-act="fitadd">Add</button></div>';
+  // suggestions: Saarthi ops for this day + bank picks for the biggest free slot
+  const ops = (INBOX && INBOX.ops || []).map((o, i) => ({ o, i })).filter(({ o }) => (o.state === 'pending' || o.state === 'failed') && o.op && (o.op.date === d.date || (!o.op.date && d.date === t)));
+  const big = gs.filter(g => g.end - g.start >= 30).sort((a, b) => (b.end - b.start) - (a.end - a.start))[0];
+  const hide = d.sugHide || [];
+  SUGS = big ? X.suggest(CFG, STORE, TF, d.date, big, t, 8).filter(x => !hide.includes(x.item.id)).slice(0, 3).map(x => Object.assign(x, { gap: big })) : [];
+  if (ops.length || SUGS.length) {
+    h += '<div class="fit-sub">Suggested</div>';
+    h += ops.map(({ o, i }) => '<div class="fit-row sug"><span class="ag-dot" style="--c:var(--accent)"></span><div class="ag-main"><div class="ag-title"><span>' + esc(o.label) + '</span></div><div class="ag-meta">Saarthi' + (o.why ? ' · ' + esc(o.why) : '') + '</div></div><button type="button" class="btn sm pri" data-act="opacc" data-i="' + i + '">Accept</button><button type="button" class="ag-lock" data-act="oprej" data-i="' + i + '" aria-label="Reject">×</button></div>').join('');
+    h += SUGS.map((sg, i) => { const c = catOf(CFG, sg.item.cat); return '<div class="fit-row sug" style="--c:' + c.color + '"><span class="ag-dot"></span><div class="ag-main"><div class="ag-title"><span>' + esc(sg.item.title) + '</span></div><div class="ag-meta">' + durTxt(sg.min) + ' at ' + hm(sg.gap.start) + ' · ' + esc(sg.why) + '</div></div><button type="button" class="btn sm" data-act="sugacc" data-i="' + i + '">Accept</button><button type="button" class="ag-lock" data-act="sughide" data-id="' + esc(sg.item.id) + '" aria-label="Not today">×</button></div>'; }).join('');
+  }
+  return h + '</div>';
+}
+function fitAdd() {
+  const d = AG_DAY; const inp = $('#fitTitle'); if (!d || !inp) return;
+  const title = inp.value.trim(); if (!title) return inp.focus();
+  d.todo = (d.todo || []).concat({ id: uid(), title, min: +$('#fitMin').value, cat: $('#fitCat').value, done: false });
+  saveDay(d); render();
+  const n = $('#fitTitle'); if (n) n.focus();
+}
 function viewToday() {
   const t = today(), d = day(CUR), isToday = CUR === t, past = CUR < t, s = CFG.settings, nm = nowMin();
   AG_DAY = d;
@@ -606,11 +649,9 @@ function viewToday() {
     + '<button class="iconbtn" data-act="prev" aria-label="Previous day">' + ic('left') + '</button><button class="iconbtn" data-act="next" aria-label="Next day">' + ic('right') + '</button>'
     + (isToday ? '' : '<button class="btn" data-act="gotoday">Today</button>')
     + '<button class="btn" data-act="print">' + ic('print') + (phone ? '' : 'Print') + '</button>'
-    + (!past ? '<button class="btn" data-act="fill">' + ic('fill') + 'Fill</button>' : '')
-    + (!past && !d.virtual && !phone ? '<button class="btn ghost" data-act="reset" title="Rebuild from routine, keep what you added">' + ic('reset') + 'Reset</button>' : '')
     + (CUR <= t ? '<button class="btn pri" data-act="close">Close day</button>' : '');
   let top = '';
-  if (!localStorage.getItem(LS_ONB)) top += '<div class="card inbox" style="margin-bottom:12px"><h3>Welcome to DayBox</h3><ol class="small" style="margin:0 0 10px;padding-left:18px"><li>Sign in with Google (the same account as Tenfold) so it syncs to your phone.</li><li>When a block ends, tap ✓ ½ ✗. That is all the logging.</li><li>Bored or free? Press <b>What now?</b></li></ol><div class="row"><button class="btn pri sm" data-act="signin">Sign in</button><button class="btn ghost sm" data-act="onb">Got it</button></div></div>';
+  if (!localStorage.getItem(LS_ONB)) top += '<div class="card inbox" style="margin-bottom:12px"><h3>Welcome to DayBox</h3><ol class="small" style="margin:0 0 10px;padding-left:18px"><li>Sign in with Google (the same account as Tenfold) so it syncs to your phone.</li><li>When a block ends, tap ✓ or ✗. That is all the logging.</li><li>Bored or free? Press <b>What now?</b></li></ol><div class="row"><button class="btn pri sm" data-act="signin">Sign in</button><button class="btn ghost sm" data-act="onb">Got it</button></div></div>';
   if (isToday) top += nowBarHtml(d);
   if (isToday && pendingOps()) top += '<div class="al" style="margin-bottom:10px">' + ic('saarthi', 's-ic') + '<span>Saarthi has <b>' + pendingOps() + '</b> suggestions.</span><button class="btn sm x" data-act="nav" data-v="saarthi">Open</button></div>';
   if (yday && yday.close && yday.close.mit && isToday) top += '<div class="al" style="margin-bottom:10px">★ <span>Today\'s MIT (from last night): <b>' + esc(yday.close.mit) + '</b></span></div>';
@@ -638,12 +679,13 @@ function viewToday() {
   const grid = '<div class="gwrap daygrid" id="dayGrid">' + gridHtml([col], 'day', ppm) + '</div>';
   const hint = '<p class="hint" style="margin-top:8px">' + (phone ? 'Tap empty space to add. Press and hold a block, then drag. Drag the bottom edge to resize.' : 'Click or drag on empty space to add. Drag a block to move it, its bottom edge to resize.') + ' Marked blocks are locked: tap the corner lock to change one.</p>';
   let body;
-  if (phone) body = top + (TMODE === 'timeline' ? grid + hint : agendaHtml(d));
-  else body = '<div class="tsplit"><div class="tleft">' + top + agendaHtml(d) + '</div><div class="tright">' + grid + hint + '</div></div>';
+  if (phone) body = top + (TMODE === 'timeline' ? grid + hint : fitHtml(d) + agendaHtml(d));
+  else body = top + '<div class="tsplit"><div class="tleft">' + fitHtml(d) + agendaHtml(d) + '</div><div class="tright">' + grid + hint + '</div></div>';
   const showGrid = !phone || TMODE === 'timeline';
   return {
     title: isToday ? 'Today' : fmtShort(CUR), sub: fmtLong(CUR) + (d.tpl ? ' · ' + esc(d.tpl.name) : ''), actions, body,
     after() {
+      const fi = $('#fitTitle'); if (fi) fi.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); fitAdd(); } };
       if (!showGrid) return;
       const gw = $('#dayGrid');
       bindGrid(gw, [col], 'day', ppm, dayHandlers);
@@ -928,7 +970,7 @@ function viewInsights() {
     return '<div class="card"><div class="lbl">' + m.label + '</div><div class="v">' + fmtVal(m.now, m.fmt) + '</div>' + arrow + '</div>';
   }).join('') + '</div><p class="hint" style="margin-top:-6px">Direction: last 7 days vs the 4 weeks before.</p>';
   if (!rep.tracked) {
-    body += '<div class="empty">No tracked days in this range yet. Mark your blocks (done, partial, skipped) and this fills up.</div>';
+    body += '<div class="empty">No tracked days in this range yet. Mark your blocks (done or skipped) and this fills up.</div>';
   } else {
     const cats = CFG.cats.filter(c => Object.keys(rep.actual).includes(c.id));
     let buckets;
@@ -937,7 +979,7 @@ function viewInsights() {
     const max = Math.max(60, ...buckets.map(b => Object.values(b.a).reduce((x, y) => x + y, 0)));
     body += '<div class="card"><h3>Where your time went</h3><div class="row" style="margin-bottom:8px">' + cats.map(c => '<span class="chip" style="--c:' + c.color + '"><i></i>' + esc(c.name) + '</span>').join('') + '</div>'
       + '<div class="bars">' + buckets.map(b => '<div class="col" title="' + esc(b.label) + ': ' + durTxt(Object.values(b.a).reduce((x, y) => x + y, 0)) + '">' + cats.map(c => b.a[c.id] ? '<i style="--c:' + c.color + ';height:' + (b.a[c.id] / max * 100) + '%"></i>' : '').join('') + '</div>').join('') + '</div>'
-      + '<div class="bars-x">' + buckets.map(b => '<span>' + esc(b.label) + '</span>').join('') + '</div><p class="hint" style="margin:8px 0 0">Done counts in full, partial counts half. Tallest bar = ' + durTxt(max) + '.</p></div>';
+      + '<div class="bars-x">' + buckets.map(b => '<span>' + esc(b.label) + '</span>').join('') + '</div><p class="hint" style="margin:8px 0 0">Done blocks count. Tallest bar = ' + durTxt(max) + '.</p></div>';
     const n = rep.tracked;
     body += '<div class="cols2" style="margin-top:14px"><div class="card"><h3>By category</h3><div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Category</th><th>Planned</th><th>Done</th><th>Per day</th></tr></thead><tbody>'
       + CFG.cats.filter(c => rep.planned[c.id] || rep.actual[c.id]).map(c => '<tr><td><span class="chip" style="--c:' + c.color + '"><i></i>' + esc(c.name) + '</span></td><td>' + hrs(rep.planned[c.id] || 0) + 'h</td><td>' + hrs(rep.actual[c.id] || 0) + 'h</td><td>' + durTxt((rep.actual[c.id] || 0) / n) + '</td></tr>').join('')
@@ -1146,6 +1188,12 @@ const ACTS = {
   prev: () => { CUR = addDays(CUR, -1); SCROLL_NOW = true; render(); },
   next: () => { CUR = addDays(CUR, 1); SCROLL_NOW = true; render(); },
   noop: () => {},
+  fitadd: fitAdd,
+  fitplace: a => { const d = AG_DAY, x = d && (d.todo || []).find(y => y.id === a.dataset.id); if (!x) return; const before = clone(d); const b = X.placeBlock(CFG, d, x, fitFrom(d)); if (!b) return toast('No free slot of ' + durTxt(x.min || 30) + ' left. Shorten it or move it to another day.'); x.placed = b.id; saveDay(d); render(); toast(x.title + ' placed at ' + hm(b.start), 'Undo', () => { saveDay(before); render(); }); },
+  fitdone: a => { const d = AG_DAY, x = d && (d.todo || []).find(y => y.id === a.dataset.id); if (!x) return; const b = blockOf(d, x); x.done = !(x.done || (b && b.status === 'done')); if (b) b.status = x.done ? 'done' : 'planned'; saveDay(d); render(); },
+  fitdel: a => { const d = AG_DAY; if (!d) return; const before = clone(d); d.todo = (d.todo || []).filter(y => y.id !== a.dataset.id); saveDay(d); render(); toast('Removed from the list', 'Undo', () => { saveDay(before); render(); }); },
+  sugacc: a => { const d = AG_DAY, sg = SUGS[+a.dataset.i]; if (!d || !sg) return; const before = clone(d); const b = X.placeBlock(CFG, d, { title: sg.item.title, min: sg.min, cat: sg.item.cat, src: 'bank', itemId: sg.item.id }, sg.gap.start); if (!b) return toast('That slot is gone.'); saveDay(d); render(); toast(sg.item.title + ' at ' + hm(b.start), 'Undo', () => { saveDay(before); render(); }); },
+  sughide: a => { const d = AG_DAY; if (!d) return; d.sugHide = (d.sugHide || []).concat(a.dataset.id); saveDay(d); render(); },
   tmode: a => { TMODE = a.dataset.m; localStorage.setItem(LS_TMODE, TMODE); SCROLL_NOW = true; render(); },
   tips: () => { TIPS_OPEN = !TIPS_OPEN; render(); },
   earlier: () => { EARLIER_OPEN = !EARLIER_OPEN; render(); },
