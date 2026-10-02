@@ -131,6 +131,20 @@ t('applyOp: addRule + editRule are effective-dated', () => {
   assert(X.activeRules(c, '2026-09-30').some(r => r.title === 'Morning pillar'));
   assert(X.applyOp(c, s, { type: 'editRule', title: 'Nope', patch: {} }, TODAY).error);
 });
+t('applyOp: editTemplate days/name + template block rename', () => {
+  const c = X.clone(cfg), s = { days: {} };
+  c.templates[0].days = [5];
+  assert(X.applyOp(c, s, { type: 'editTemplate', tpl: 'Workday', days: [1, 2, 3, 4, 5] }, TODAY).cfg);
+  assert.strictEqual(X.templateFor(c, '2026-10-05').id, 'tpl_work');
+  assert(X.applyOp(c, s, { type: 'editTemplateBlock', tpl: 'Workday', title: 'Lights out', newTitle: 'Blackout' }, TODAY).cfg);
+  assert(X.buildDay(c, '2026-10-05').blocks.some(b => b.title === 'Blackout'));
+  assert(X.applyOp(c, s, { type: 'editTemplate', tpl: 'Nope', days: [] }, TODAY).error);
+});
+t('mergeCloud: live partial snapshot never pushes untouched data', () => {
+  const l = { config: { updated: 5 }, days: { a: { updated: 10 }, b: { updated: 1 } } };
+  const m = X.mergeCloud(l, { days: { b: { updated: 7 } }, partial: true });
+  assert(!m.pushConfig); assert.strictEqual(m.pushDays.length, 0); assert.strictEqual(m.days.b.updated, 7);
+});
 t('my-routine.json loads', () => {
   if (!fs.existsSync(__dirname + '/my-routine.json')) return;
   const o = JSON.parse(read('my-routine.json')); const m = X.mergeConfig(o.config);

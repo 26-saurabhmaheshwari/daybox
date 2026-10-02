@@ -524,16 +524,19 @@ function sanyamAnalysis(cfg, store, tf, today) {
 /* ---------- sync merge (newer wins per doc) ---------- */
 function mergeCloud(local, cloud) {
   const out = { config: local.config, days: Object.assign({}, local.days), pushConfig: false, pushDays: [], changed: false };
-  const cu = (cloud.config && cloud.config.updated) || 0, lu = local.config.updated || 0;
-  if (cloud.config && cu > lu) { out.config = cloud.config; out.changed = true; }
-  else if (lu > cu) out.pushConfig = true;
+  // live snapshots send only what changed: a missing config / partial days must not trigger pushes
+  if (cloud.config !== undefined) {
+    const cu = (cloud.config && cloud.config.updated) || 0, lu = local.config.updated || 0;
+    if (cloud.config && cu > lu) { out.config = cloud.config; out.changed = true; }
+    else if (lu > cu) out.pushConfig = true;
+  }
   const cd = cloud.days || {};
   Object.keys(cd).forEach(k => {
     const l = local.days[k], d = cd[k];
     if (!l || (d.updated || 0) > (l.updated || 0)) { out.days[k] = d; out.changed = true; }
     else if ((l.updated || 0) > (d.updated || 0)) out.pushDays.push(k);
   });
-  Object.keys(local.days).forEach(k => { if (!cd[k]) out.pushDays.push(k); });
+  if (!cloud.partial) Object.keys(local.days).forEach(k => { if (!cd[k]) out.pushDays.push(k); });
   return out;
 }
 
@@ -561,6 +564,16 @@ function applyOp(cfg, store, op, today) {
     const b = t && t.blocks.find(x => norm(x.title) === norm(op.title));
     if (!b) return { error: 'template block not found' };
     ['start', 'dur', 'cat'].forEach(k => { if (op[k] != null) b[k] = op[k]; });
+    if (op.newTitle) b.title = op.newTitle;
+    t.blocks.sort((a, c) => a.start - c.start);
+    t.version = (t.version || 1) + 1;
+    return { cfg: true };
+  }
+  if (op.type === 'editTemplate') {
+    const t = cfg.templates.find(x => !x.deleted && (x.id === op.tpl || norm(x.name) === norm(op.tpl)));
+    if (!t) return { error: 'template "' + op.tpl + '" not found' };
+    if (Array.isArray(op.days)) t.days = op.days.slice();
+    if (op.name) t.name = op.name;
     t.version = (t.version || 1) + 1;
     return { cfg: true };
   }

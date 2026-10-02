@@ -97,11 +97,12 @@ document.addEventListener('dbx-cloud', e => {
   Object.keys(m.days).forEach(k => { if (DAYS[k] !== m.days[k]) { DAYS[k] = m.days[k]; put(LS_DAY + k, DAYS[k]); } });
   if (m.pushConfig) markDirty('cfg');
   m.pushDays.forEach(markDirty);
-  INBOX = (e.detail && e.detail.inbox) || null;
+  if (e.detail && 'inbox' in e.detail) INBOX = e.detail.inbox || null;
   ensureToday();
   setSync('ok');
-  render();
+  if (!e.detail || !e.detail.live || m.changed) { if (DRAGGING) setTimeout(render, 400); else render(); }
 });
+document.addEventListener('dbx-inbox', e => { INBOX = e.detail || null; renderNav(); if (VIEW === 'saarthi' || VIEW === 'today') render(); });
 document.addEventListener('dbx-tenfold', e => { TF = e.detail; if (['bank', 'insights', 'today'].includes(VIEW)) render(); });
 document.addEventListener('dbx-sync-error', e => { setSync('err', e.detail); toast(String(e.detail), null, null, 9000); });
 

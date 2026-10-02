@@ -308,7 +308,7 @@ input[type=color]{width:38px;height:32px;border:1px solid var(--line);border-rad
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
   import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
-  import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+  import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs, onSnapshot } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
   const app = initializeApp({
     apiKey: "AIzaSyA635AeqlLNF5G0YvoUUPEG3cG0AaTVKM4",
     authDomain: "goal-tracker-and-timer.firebaseapp.com",
@@ -318,7 +318,7 @@ input[type=color]{width:38px;height:32px;border:1px solid var(--line);border-rad
     appId: "1:909186538996:web:3b9359566c7e0b21dd2da1"
   });
   const auth = getAuth(app), db = getFirestore(app), provider = new GoogleAuthProvider();
-  let uid = null;
+  let uid = null, unsub = [];
   const ev = (n, d) => document.dispatchEvent(new CustomEvent(n, { detail: d }));
   const need = () => uid ? Promise.resolve() : Promise.reject(new Error('not signed in'));
   // Only planner/{uid}/... is ever written. Tenfold's users/{uid} is read, never written.
@@ -334,6 +334,7 @@ input[type=color]{width:38px;height:32px;border:1px solid var(--line);border-rad
   };
   onAuthStateChanged(auth, async user => {
     uid = user ? user.uid : null;
+    if (!user) { unsub.forEach(f => f()); unsub = []; }
     ev('dbx-auth', { signedIn: !!user, email: user ? user.email : null, uid });
     if (!user) return;
     try {
@@ -344,6 +345,17 @@ input[type=color]{width:38px;height:32px;border:1px solid var(--line);border-rad
       ]);
       const days = {}; ds.forEach(s => { days[s.id] = s.data(); });
       ev('dbx-cloud', { config: c.exists() ? c.data() : null, days, inbox: ib.exists() ? ib.data() : null });
+      // live: changes from the phone or from Saarthi show up without a reload
+      unsub.forEach(f => f());
+      unsub = [
+        onSnapshot(doc(db, 'planner', uid, 'meta', 'config'), s => { if (!s.metadata.hasPendingWrites && s.exists()) ev('dbx-cloud', { config: s.data(), live: true }); }),
+        onSnapshot(doc(db, 'planner', uid, 'meta', 'inbox'), s => { if (!s.metadata.hasPendingWrites) ev('dbx-inbox', s.exists() ? s.data() : null); }),
+        onSnapshot(collection(db, 'planner', uid, 'days'), qs => {
+          if (qs.metadata.hasPendingWrites) return;
+          const ch = {}; qs.docChanges().forEach(x => { if (x.type !== 'removed') ch[x.doc.id] = x.doc.data(); });
+          if (Object.keys(ch).length) ev('dbx-cloud', { days: ch, partial: true, live: true });
+        }),
+      ];
     } catch (e) { ev('dbx-sync-error', 'Could not load your data: ' + (e.code || e.message) + '. Check the Firestore Rules block for planner.'); }
     try {
       const t = await getDoc(doc(db, 'users', uid));
@@ -372,7 +384,7 @@ input[type=color]{width:38px;height:32px;border:1px solid var(--line);border-rad
 <div id="ov" hidden><div id="sheet" role="dialog" aria-modal="true"></div></div>
 <div id="toast" hidden></div>
 <div id="printArea"></div>
-<script src="core.js?v=6"></script>
-<script src="app.js?v=6"></script>
+<script src="core.js?v=7"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>
