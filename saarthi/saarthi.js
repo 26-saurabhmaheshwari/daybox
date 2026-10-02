@@ -402,7 +402,7 @@ async function decide(arg, accept) {
     const r = X.applyOp(cfg, store, o.op, t);
     if (r.error) { o.state = 'failed'; o.error = r.error; console.log('  ' + o.id + ' failed: ' + r.error); continue; }
     await write(uid, 'planner/' + uid + '/history/' + Date.now() + '-' + o.id, { at: Date.now(), by: 'saarthi', kind: 'apply', op: o.op, path: relPath, before });
-    if (r.day) { r.day.updated = Date.now(); store.days[r.day.date] = r.day; dayDirty[r.day.date] = r.day; }
+    if (r.day) { X.mergeTouching(r.day); r.day.updated = Date.now(); store.days[r.day.date] = r.day; dayDirty[r.day.date] = r.day; }
     if (r.cfg) cfgDirty = true;
     o.state = 'accepted'; o.decidedAt = Date.now();
   }

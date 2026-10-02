@@ -250,9 +250,11 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 .part.ev{--pt:#5B3F8E;--pt-ink:#FFFFFF;--sky:linear-gradient(180deg,#2E2C63 0%,#6A5AA6 100%);
   --scene:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 44' preserveAspectRatio='xMidYMax slice'%3E%3Cmask id='m'%3E%3Ccircle cx='150' cy='17' r='6.5' fill='white'/%3E%3Ccircle cx='154' cy='14' r='6' fill='black'/%3E%3C/mask%3E%3Ccircle cx='150' cy='17' r='6.5' fill='%23FFF3C4' mask='url(%23m)'/%3E%3Cg fill='white' opacity='.85'%3E%3Ccircle cx='106' cy='14' r='1.1'/%3E%3Ccircle cx='121' cy='23' r='.9'/%3E%3Ccircle cx='133' cy='10' r='1'/%3E%3Ccircle cx='168' cy='11' r='1.1'/%3E%3Ccircle cx='178' cy='22' r='.9'/%3E%3Ccircle cx='190' cy='14' r='1'/%3E%3C/g%3E%3Cpath d='M0 32 Q70 24 150 30 T300 28 V44 H0Z' fill='%237E6AAE'/%3E%3Cpath d='M0 38 Q80 33 160 37 T300 35 V44 H0Z' fill='%235B3F8E'/%3E%3Cpath d='M112 44 C111 37 120 32 128 34 C133 27 148 27 152 33 C162 31 172 37 172 44Z' fill='%233E2A66'/%3E%3C/svg%3E")}
 .part.ev .pt-h{text-shadow:0 1px 2px rgba(0,0,0,.3)}
-.pt-g{display:grid;grid-template-columns:24px repeat(2,minmax(0,1fr));gap:5px}
+.pt-g{display:grid;grid-template-columns:24px repeat(2,minmax(0,1fr));grid-template-rows:auto;grid-auto-rows:clamp(34px,calc((100vh - 400px) / 7),50px);gap:5px}
 .pt-g .ck-c{height:clamp(34px,calc((100vh - 400px) / 7),50px);border-radius:9px;padding:0 9px;font-size:.78rem}
 /* empty: soft tint, no border (border on hover); past empty: no fill, faint dashed edge */
+.pt-g .ck-c.tall{height:auto;align-self:stretch;align-items:flex-start;padding-top:10px;flex-wrap:wrap;align-content:flex-start;white-space:normal}
+.pt-g .ck-c.tall .ck-t{white-space:normal}
 .pt-g .ck-c.empty{background:color-mix(in srgb,var(--pt) 7%,var(--surface))}
 .pt-g .ck-c.empty.gone{opacity:1;background:transparent;outline:1px dashed color-mix(in srgb,var(--pt) 22%,var(--line));outline-offset:-1px}
 .pt-g .ck-c.empty:hover,.pt-g .ck-c.over{background:var(--accent-soft);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 35%,transparent)}
@@ -618,7 +620,7 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 <div id="ov" hidden><div id="sheet" role="dialog" aria-modal="true"></div></div>
 <div id="toast" hidden></div>
 <div id="printArea"></div>
-<script src="core.js?v=80"></script>
-<script src="app.js?v=80"></script>
+<script src="core.js?v=82"></script>
+<script src="app.js?v=82"></script>
 </body>
 </html>

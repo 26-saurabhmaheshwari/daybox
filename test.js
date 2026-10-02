@@ -336,6 +336,16 @@ t('report: by activity counts done minutes and times, partial half, sleep left o
   const r = X.rangeReport(m, st, k, k);
   assert.strictEqual(r.byActivity.length, 1); assert.strictEqual(r.byActivity[0].min, 90); assert.strictEqual(r.byActivity[0].n, 2);
 });
+t('mergeTouching: same activity back to back becomes one block; routine, pillar or a gap stay apart', () => {
+  const d = { blocks: [
+    { id: 'a', start: 961, dur: 240, title: 'Built DayBox', cat: 'goal', status: 'done', unplanned: true },
+    { id: 'b', start: 1201, dur: 39, title: 'built daybox', cat: 'goal', status: 'done', unplanned: true },
+    { id: 'c', start: 1260, dur: 120, title: 'Built DayBox', cat: 'goal', status: 'done', unplanned: true },
+    { id: 'r', start: 1380, dur: 30, title: 'Built DayBox', cat: 'goal', status: 'done', unplanned: true, src: 'rule' },
+  ] };
+  assert(X.mergeTouching(d));
+  assert.strictEqual(d.blocks.length, 3); assert.strictEqual(d.blocks[0].dur, 279); assert.strictEqual(d.blocks[1].start, 1260);
+});
 t('my-routine.json loads', () => {
   if (!fs.existsSync(__dirname + '/my-routine.json')) return;
   const o = JSON.parse(read('my-routine.json')); const m = X.mergeConfig(o.config);

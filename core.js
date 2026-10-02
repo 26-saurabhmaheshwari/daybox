@@ -655,6 +655,25 @@ function fillDay(cfg, store, tf, date, today, nowMin) {
   return { day, added };
 }
 
+/* two blocks of the same activity that touch become one (same title, category and status; not pillars or routine blocks) */
+function mergeTouching(day) {
+  const bs = (day.blocks || []).slice().sort((a, b) => a.start - b.start), out = [];
+  let merged = false;
+  bs.forEach(b => {
+    const a = out[out.length - 1];
+    if (a && a.start + a.dur === b.start && norm(a.title) === norm(b.title) && a.cat === b.cat && a.status === b.status && a.status !== 'moved'
+      && !a.pillar && !b.pillar && a.src !== 'rule' && b.src !== 'rule' && !!a.unplanned === !!b.unplanned) {
+      a.dur += b.dur;
+      const seen = new Set(attachObjs(a.attach).map(x => x.t));
+      a.attach = attachObjs(a.attach).concat(attachObjs(b.attach).filter(x => !seen.has(x.t)));
+      if (b.note && !a.note) a.note = b.note;
+      if (b.mit) a.mit = true;
+      merged = true;
+    } else out.push(b);
+  });
+  if (merged) day.blocks = out;
+  return merged;
+}
 /* the next slot a block could move to: after it ends today, then the next 7 days; free, long enough and possible then.
    `item` (its bank item, if any) brings its days / time-of-day / hours. Returns {date, start} or null. */
 function nextSlot(cfg, store, b, date, today, nowM, item) {
@@ -980,7 +999,7 @@ root.DBX = {
   overlaps, clashWith, carve, ruleClash, makeRoom, backupSlot,
   activeRules, templateFor, attachObjs, blockFrom, ruleIdea, weekItemsFor, pickPool, drawPick, autoPicks, buildDay, getDay, planSnapshot, lockIfDue, resetDay,
   editRule, endRule, deleteRule, ruleLive, lanes, live, intervals, unionMin, gaps,
-  tfGoals, tfCatId, ensureTfCats, possibleAt, candidates, matches, lastDone, hoursDone, funMin, weekDays, itemCount, balanceState, suggest, backupOffers, useBackup, fillDay, placeBlock, nextSlot,
+  tfGoals, tfCatId, ensureTfCats, possibleAt, candidates, matches, lastDone, hoursDone, funMin, weekDays, itemCount, balanceState, suggest, backupOffers, useBackup, fillDay, placeBlock, nextSlot, mergeTouching,
   missedYesterday, principleChecks, actualMin, dayStats, trackedDays, rangeReport, direction, streaks,
   dayFeatures, sanyamHabits, sanyamAnalysis, mergeCloud, applyOp,
 };

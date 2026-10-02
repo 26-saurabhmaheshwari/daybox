@@ -85,6 +85,7 @@ function ensurePicks(ws) {
 }
 function saveDay(d, auto) {
   d.virtual = false; delete d.untracked;
+  X.mergeTouching(d);
   X.lockIfDue(d, today());
   d.updated = auto ? 1 : Date.now();  // auto-created days must lose to real edits from another device
   DAYS[d.date] = d;
@@ -605,8 +606,9 @@ function cellFactory(d, big, join) {
       + (drag ? ' data-drag="blk:' + b.id + '" data-label="' + esc(b.title) + '"' : '') + ' title="' + esc(b.title + ' ' + hm(b.start) + '–' + hm(b.start + b.dur) + (att ? ': ' + att : '')) + '">' + inner + (o.nl || '') + '</div>';
   };
   // span: 2 when one block fills both halves of the hour (cells merge into one wide bar)
-  const cell = (m, pm, span) => {
-    const x = byMin[m], b = x.b, S = 30 * (span || 1), isNow = d.date === t && nm >= m && nm < m + S;
+  const cell = (m, pm, span, rows) => {
+    const x = byMin[m], b = x.b, S = 30 * (span || 1) * (rows || 1), isNow = d.date === t && nm >= m && nm < m + S;
+    if (rows > 1) return blockHtml(b, m, 'ck-c span2 tall' + (isNow ? ' now' : ''), ';grid-row:span ' + rows, { first: true, title: true, tick: true, time: true });
     const nl = isNow ? '<b class="ck-nl" style="left:' + Math.round((nm - m) / S * 100) + '%"></b>' : '';
     let cls = 'ck-c' + (pm ? ' pm' : '') + (isNow ? ' now' : '') + (span === 2 ? ' span2' : '');
     if (!b) return '<div class="' + cls + ' empty' + (gone(m + 30) ? ' gone' : '') + '" data-m="' + m + '">' + nl + '</div>';
@@ -653,7 +655,7 @@ function partStrip(d, h0, h1) {
   return '<div class="pt-sum"><div class="pt-bar">' + bar + '</div><span>' + (bs.length ? bs.length + ' block' + (bs.length > 1 ? 's' : '') + (dn ? ' · ' + dn + ' done' : '') + (sk ? ' · ' + sk + ' skipped' : '') : 'nothing booked') + '</span></div>';
 }
 function partsHtml(d) {
-  const { pair } = cellFactory(d, true, true), nm = nowMin(), isT = d.date === today();
+  const { pair, cell, byMin } = cellFactory(d, true, true), nm = nowMin(), isT = d.date === today();
   const fold = DAY_PARTS.map(([, , h1, k]) => partFolded(d, k, h1));
   return '<div class="parts" style="--cols:' + fold.map(f => f ? '76px' : 'minmax(0,1fr)').join(' ') + '">' + DAY_PARTS.map(([name, h0, h1, k], i) => {
     const now = isT && nm >= h0 * 60 && nm < h1 * 60;
@@ -662,7 +664,15 @@ function partsHtml(d) {
     if (fold[i]) return '<div class="part col ' + k + '">' + head + partStrip(d, h0, h1) + '</div>';
     let g = '<div class="part ' + k + (now ? ' now' : '') + '">' + head
       + '<div class="pt-g"><span></span><span class="ck-h">:00</span><span class="ck-h">:30</span>';
-    for (let h = h0; h < h1; h++) g += '<span class="ck-r">' + h + '</span>' + pair(h * 60, false);
+    for (let h = h0; h < h1; h++) {
+      const b = byMin[h * 60].b, full = hh => hh < h1 && b && byMin[hh * 60].b === b && byMin[hh * 60 + 30].b === b;
+      let k = 0; while (full(h + k)) k++;
+      if (k >= 2) { // the same block fills k whole hours: one tall block, the hour labels still run down the side
+        g += '<span class="ck-r">' + h + '</span>' + cell(h * 60, false, 2, k);
+        for (let j = 1; j < k; j++) g += '<span class="ck-r">' + (h + j) + '</span>';
+        h += k - 1;
+      } else g += '<span class="ck-r">' + h + '</span>' + pair(h * 60, false);
+    }
     return g + '</div></div>';
   }).join('') + '</div>';
 }
