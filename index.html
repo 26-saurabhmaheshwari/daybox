@@ -379,7 +379,12 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 .list{display:flex;flex-direction:column}
 .li{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:10px 4px;border-bottom:1px solid var(--line2)}
 .li:last-child{border-bottom:0}
-.li.cat{grid-template-columns:auto 1fr auto;gap:8px}
+.li.cat{grid-template-columns:auto 1fr auto auto;gap:8px}
+.li.cat select{max-width:120px}
+.li.typ{grid-template-columns:1fr auto auto;gap:8px}
+.li.typ input{min-width:0}
+.li.typ.add{border-top:1px dashed var(--line2);border-bottom:0;margin-top:4px}
+.cat-grp{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:10px 0 0}
 .li.cat input[type=text]{min-width:0}
 .li.cat.add{border-top:1px dashed var(--line2);border-bottom:0;margin-top:4px}
 .cat-del{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 4px 10px;font-size:.84rem;border-bottom:1px solid var(--line2)}
@@ -582,7 +587,7 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 <div id="ov" hidden><div id="sheet" role="dialog" aria-modal="true"></div></div>
 <div id="toast" hidden></div>
 <div id="printArea"></div>
-<script src="core.js?v=55"></script>
-<script src="app.js?v=55"></script>
+<script src="core.js?v=56"></script>
+<script src="app.js?v=56"></script>
 </body>
 </html>

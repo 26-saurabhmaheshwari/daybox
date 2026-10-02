@@ -899,7 +899,7 @@ function viewBank() {
         + '</div><div class="row fun-add" style="margin-top:10px"><input type="text" data-funnew="' + cat + '" placeholder="' + ph + '" maxlength="40"><button type="button" class="btn pri sm" data-funadd="' + cat + '">' + ic('plus') + 'Add</button></div></div>';
     });
   } else if (tab === 'balance') {
-    const free = X.liveCats(CFG).filter(c => !X.isSleep(CFG, c.id) && !X.isWaste(CFG, c.id)), b = CFG.settings.balance;
+    const free = X.liveCats(CFG).filter(c => c.type !== 'office' && c.type !== 'sleep' && !X.isWaste(CFG, c.id)), b = CFG.settings.balance;
     const sum = free.reduce((a, c) => a + (+b[c.id] || 0), 0);
     body += '<p class="hint">How you want your free time split. A category at 0% stays out of the mix. Suggestions push whatever is behind.</p>'
       + '<div class="cols2"><div class="card"><h3>Your mix</h3>' + free.map(c => '<div class="hbar" style="--c:' + c.color + '"><span>' + esc(c.name) + '</span><input type="range" min="0" max="60" step="5" data-bal="' + c.id + '" value="' + (+b[c.id] || 0) + '"><span class="mono small" id="bv_' + c.id + '">' + (+b[c.id] || 0) + '%</span></div>').join('')
@@ -1113,11 +1113,26 @@ async function decideOp(i, accept) {
 }
 
 /* ---------- settings ---------- */
-let CAT_DEL = null; // category waiting for delete confirm
+let CAT_DEL = null, TYPE_DEL = null; // category / type waiting for delete confirm
+function typeOptions(sel) { return X.liveTypes(CFG).map(t => '<option value="' + t.id + '"' + (t.id === sel ? ' selected' : '') + '>' + esc(t.name) + '</option>').join(''); }
+function typeCard() {
+  const types = X.liveTypes(CFG);
+  const row = t => {
+    const n = X.liveCats(CFG).filter(c => c.type === t.id).length, fixed = X.FIXED_TYPES.includes(t.id);
+    let h = '<div class="li typ" data-type="' + t.id + '"><input type="text" value="' + esc(t.name) + '" aria-label="Type name"><span class="m">' + n + ' categor' + (n === 1 ? 'y' : 'ies') + '</span>'
+      + (fixed ? '<span class="m" title="Built in: rename only">built in</span>' : '<button type="button" class="btn ghost sm" data-typedel="' + t.id + '" aria-label="Delete ' + esc(t.name) + '" title="Delete">×</button>') + '</div>';
+    if (TYPE_DEL !== t.id) return h;
+    return h + '<div class="cat-del"><span>Delete <b>' + esc(t.name) + '</b>?' + (n ? ' Move its ' + n + ' categor' + (n === 1 ? 'y' : 'ies') + ' to' : '') + '</span><select id="typeTo">' + types.filter(x => x.id !== t.id).map(x => '<option value="' + x.id + '">' + esc(x.name) + '</option>').join('') + '</select>'
+      + '<button type="button" class="btn sm danger" id="typeYes">Delete</button><button type="button" class="btn sm" id="typeNo">Cancel</button></div>';
+  };
+  return '<div class="card"><h3>Types</h3><div class="list">' + types.map(row).join('') + '</div>'
+    + '<div class="li typ add"><input type="text" id="typeNew" placeholder="New type" maxlength="20"><span></span><button type="button" class="btn sm pri" id="typeAdd">Add</button></div>'
+    + '<p class="hint" style="margin:10px 0 0">' + esc(X.typeOf(CFG, 'office').name) + ' never counts as free time. ' + esc(X.typeOf(CFG, 'sleep').name) + ' is never marked and has no end bell.</p></div>';
+}
 function catCard() {
-  const cats = X.liveCats(CFG);
+  const cats = X.liveCats(CFG), types = X.liveTypes(CFG);
   const row = c => {
-    let h = '<div class="li cat" data-cat="' + c.id + '"><input type="color" value="' + c.color + '" data-f="color" aria-label="Colour"><input type="text" value="' + esc(c.name) + '" data-f="name" aria-label="Name">'
+    let h = '<div class="li cat" data-cat="' + c.id + '"><input type="color" value="' + c.color + '" data-f="color" aria-label="Colour"><input type="text" value="' + esc(c.name) + '" data-f="name" aria-label="Name"><select data-f="type" aria-label="Type">' + typeOptions(c.type) + '</select>'
       + (cats.length > 1 ? '<button type="button" class="btn ghost sm" data-catdel="' + c.id + '" aria-label="Delete ' + esc(c.name) + '" title="Delete">×</button>' : '<span></span>') + '</div>';
     if (CAT_DEL !== c.id) return h;
     const u = X.catUse(CFG, c.id), used = u.rules + u.items;
@@ -1126,8 +1141,9 @@ function catCard() {
       + (used ? '<select id="catTo">' + cats.filter(x => x.id !== c.id).map(x => '<option value="' + x.id + '">' + esc(x.name) + '</option>').join('') + '</select>' : '')
       + '<button type="button" class="btn sm danger" id="catYes">Delete</button><button type="button" class="btn sm" id="catNo">Cancel</button></div>';
   };
-  return '<div class="card"><h3>Categories</h3><div class="list">' + cats.map(row).join('') + '</div>'
-    + '<div class="li cat add"><span></span><input type="text" id="catNew" placeholder="New category" maxlength="24"><button type="button" class="btn sm pri" id="catAdd">Add</button></div>'
+  // grouped under their type, so you see what sits where
+  return '<div class="card"><h3>Categories</h3>' + types.map(t => { const list = cats.filter(c => c.type === t.id); return list.length ? '<div class="cat-grp">' + esc(t.name) + '</div><div class="list">' + list.map(row).join('') + '</div>' : ''; }).join('')
+    + '<div class="li cat add"><span></span><input type="text" id="catNew" placeholder="New category" maxlength="24"><select id="catNewT" aria-label="Type">' + typeOptions('nongoal') + '</select><button type="button" class="btn sm pri" id="catAdd">Add</button></div>'
     + '<p class="hint" style="margin:10px 0 0">Which ones count as free time: set their share in Library, Balance.</p></div>';
 }
 function viewSettings() {
@@ -1143,7 +1159,7 @@ function viewSettings() {
     + '<div class="row" style="margin-top:12px"><label class="check"><input type="checkbox" data-s="sound"' + (s.sound ? ' checked' : '') + '> Bell sound when a block starts and ends</label><button class="btn sm" data-act="notify">Allow pop-up alerts</button></div>'
     + '<p class="hint">Alerts only ring while DayBox is open in a tab (or on your phone home screen).</p></div>'
     + '<div class="card"><h3>Backup</h3><div class="row"><button class="btn" data-act="export">Export backup (JSON)</button><label class="btn">Import backup or routine<input type="file" accept=".json,application/json" id="impFile" hidden></label><button class="btn" data-act="csv">Export CSV</button></div><p class="hint">Import replaces templates, routine, bank and settings, and adds any days in the file. Use it once for <b>my-routine.json</b>.</p></div>'
-    + '</div><div>' + catCard()
+    + '</div><div>' + typeCard() + catCard()
     + '<div class="card"><h3>About</h3><p class="small" style="margin:0">DayBox v1 · Data: Firebase <span class="mono">planner/</span> (yours only). Tenfold is read, never written.</p></div></div></div>';
   return {
     title: 'Settings', body,
@@ -1158,11 +1174,17 @@ function viewSettings() {
           saveCfg(); render();
         };
       });
-      $$('[data-cat]').forEach(li => { li.onchange = e => { const f = e.target.dataset.f; if (!f) return; const c = CFG.cats.find(x => x.id === li.dataset.cat); c[f] = f === 'name' ? (e.target.value.trim() || c.name) : e.target.value; saveCfg(); }; });
+      $$('[data-cat]').forEach(li => { li.onchange = e => { const f = e.target.dataset.f; if (!f) return; const c = CFG.cats.find(x => x.id === li.dataset.cat); c[f] = f === 'name' ? (e.target.value.trim() || c.name) : e.target.value; saveCfg(); if (f === 'type') render(); }; });
       $$('[data-catdel]').forEach(b => { b.onclick = () => { CAT_DEL = b.dataset.catdel; render(); }; });
       if ($('#catNo')) $('#catNo').onclick = () => { CAT_DEL = null; render(); };
       if ($('#catYes')) $('#catYes').onclick = () => { const to = $('#catTo') ? $('#catTo').value : null; if (X.deleteCat(CFG, CAT_DEL, to)) { CAT_DEL = null; saveCfg(); render(); } };
-      $('#catAdd').onclick = () => { const n = $('#catNew').value.trim(); if (!n) { $('#catNew').focus(); return; } X.addCat(CFG, n); saveCfg(); render(); };
+      $('#catAdd').onclick = () => { const n = $('#catNew').value.trim(); if (!n) { $('#catNew').focus(); return; } X.addCat(CFG, n, $('#catNewT').value); saveCfg(); render(); };
+      $$('[data-type]').forEach(li => { const inp = $('input', li); inp.onchange = () => { const t = CFG.types.find(x => x.id === li.dataset.type); t.name = inp.value.trim() || t.name; saveCfg(); render(); }; });
+      $$('[data-typedel]').forEach(b => { b.onclick = () => { TYPE_DEL = b.dataset.typedel; render(); }; });
+      if ($('#typeNo')) $('#typeNo').onclick = () => { TYPE_DEL = null; render(); };
+      if ($('#typeYes')) $('#typeYes').onclick = () => { if (X.deleteType(CFG, TYPE_DEL, $('#typeTo').value) !== false) { TYPE_DEL = null; saveCfg(); render(); } };
+      $('#typeAdd').onclick = () => { const n = $('#typeNew').value.trim(); if (!n) { $('#typeNew').focus(); return; } X.addType(CFG, n); saveCfg(); render(); };
+      $('#typeNew').onkeydown = e => { if (e.key === 'Enter') $('#typeAdd').click(); };
       $('#catNew').onkeydown = e => { if (e.key === 'Enter') $('#catAdd').click(); };
       $('#impFile').onchange = e => { const f = e.target.files[0]; if (f) importFile(f); e.target.value = ''; };
     },

@@ -219,6 +219,18 @@ t('nuggets: chunk from you, minutes left from Tenfold, gone when nothing is left
   const s = X.suggest(m, { days: {} }, tf, TODAY, { start: 600, end: 720 }, TODAY, 5).find(x => x.item.id === 'tf:a');
   assert.strictEqual(s.min, 15); // only 12 min left, so a short chunk
 });
+t('types: seeded, old groups migrate, add/delete moves categories, office + sleep stay', () => {
+  const m = X.mergeConfig({ cats: [{ id: 'office', name: 'Office', color: '#2F7BF5', group: 'fixed' }, { id: 'c_x', name: 'Mine', color: '#111111', group: 'sleep' }, { id: 'c_y', name: 'Other', color: '#222222' }] });
+  assert.strictEqual(X.liveTypes(m).map(t => t.id).join(), 'office,goal,nongoal,sleep');
+  assert.strictEqual(X.catOf(m, 'office').type, 'office'); assert.strictEqual(X.catOf(m, 'c_x').type, 'sleep'); assert.strictEqual(X.catOf(m, 'c_y').type, 'nongoal');
+  assert(X.isSleep(m, 'c_x')); assert(X.isSleep(m, 'sleep'));
+  const t = X.addType(m, 'Family'); m.cats.find(c => c.id === 'family').type = t.id;
+  assert.strictEqual(X.deleteType(m, 'office', 'goal'), false); assert.strictEqual(X.deleteType(m, t.id, t.id), false);
+  assert.strictEqual(X.deleteType(m, t.id, 'nongoal'), 1); assert.strictEqual(X.catOf(m, 'family').type, 'nongoal');
+  const again = X.mergeConfig(JSON.parse(JSON.stringify(m))); assert(again.types.find(x => x.id === t.id).deleted);
+  m.types.find(x => x.id === 'goal').deleted = true; const g = X.mergeConfig(JSON.parse(JSON.stringify(m)));
+  assert.strictEqual(X.catOf(g, 'goal').type, 'nongoal'); // category of a deleted type falls back
+});
 t('my-routine.json loads', () => {
   if (!fs.existsSync(__dirname + '/my-routine.json')) return;
   const o = JSON.parse(read('my-routine.json')); const m = X.mergeConfig(o.config);

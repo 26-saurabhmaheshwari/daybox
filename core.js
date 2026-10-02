@@ -23,18 +23,28 @@ const zoneOf = m => m < 720 ? 'morning' : m < 1020 ? 'afternoon' : 'evening';
 
 /* ---------- seeds (neutral: the repo is public; your real routine lives in my-routine.json) ---------- */
 const SEED_CATS = [
-  { id: 'pillar',  name: 'Pillar',  color: '#C2185B', group: 'fixed' },  // maroon: spirituality
-  { id: 'office',  name: 'Office',  color: '#2F7BF5', group: 'fixed' },  // blue: trust, focus
-  { id: 'admin',   name: 'Admin',   color: '#6E7A91', group: 'fixed' },  // grey: business
-  { id: 'family',  name: 'Family',  color: '#F07A1A', group: 'free' },   // orange: warmth
-  { id: 'goal',    name: 'Goal',    color: '#7B5CFA', group: 'free' },   // violet: ambition
-  { id: 'hobby',   name: 'Hobby',   color: '#E6A100', group: 'free' },   // amber: joy
-  { id: 'leisure', name: 'Leisure', color: '#09A6C9', group: 'free' },   // cyan: calm
-  { id: 'health',  name: 'Health',  color: '#1FAE5B', group: 'free' },   // green: nature
-  { id: 'self',    name: 'Self',    color: '#E54C9A', group: 'self' },   // pink: care
-  { id: 'sleep',   name: 'Sleep',   color: '#4C5774', group: 'sleep' },  // slate
-  { id: 'waster',  name: 'Waster',  color: '#EF4444', group: 'waste' },  // red: warning
+  { id: 'pillar',  name: 'Pillar',  color: '#C2185B', type: 'goal' },  // maroon: spirituality
+  { id: 'office',  name: 'Office',  color: '#2F7BF5', type: 'office' },  // blue: trust, focus
+  { id: 'admin',   name: 'Admin',   color: '#6E7A91', type: 'office' },  // grey: business
+  { id: 'family',  name: 'Family',  color: '#F07A1A', type: 'nongoal' },   // orange: warmth
+  { id: 'goal',    name: 'Goal',    color: '#7B5CFA', type: 'goal' },   // violet: ambition
+  { id: 'hobby',   name: 'Hobby',   color: '#E6A100', type: 'nongoal' },   // amber: joy
+  { id: 'leisure', name: 'Leisure', color: '#09A6C9', type: 'nongoal' },   // cyan: calm
+  { id: 'health',  name: 'Health',  color: '#1FAE5B', type: 'goal' },   // green: nature
+  { id: 'self',    name: 'Self',    color: '#E54C9A', type: 'nongoal' },   // pink: care
+  { id: 'sleep',   name: 'Sleep',   color: '#4C5774', type: 'sleep' },  // slate
+  { id: 'waster',  name: 'Waster',  color: '#EF4444', type: 'nongoal' },  // red: warning
 ];
+/* types group your categories. office and sleep are built in (rename only): office never counts as free time,
+   sleep is never marked and has no end bell. You can add your own. */
+const SEED_TYPES = [
+  { id: 'office',  name: 'Office' },
+  { id: 'goal',    name: 'Goals' },
+  { id: 'nongoal', name: 'Non-goals' },
+  { id: 'sleep',   name: 'Sleep' },
+];
+const FIXED_TYPES = ['office', 'sleep'];
+const OLD_GROUP_TYPE = { fixed: 'office', free: 'nongoal', self: 'nongoal', sleep: 'sleep', waste: 'nongoal' };
 // colours the first version shipped with; a category still on one of these gets the new palette
 const OLD_SEED_COLORS = { pillar: ['#E08A1E', '#B4235A'], office: ['#3D6B99', '#3B7BE8'], admin: ['#7F8791', '#6B7A8F'], family: ['#2F9A62', '#F08A24', '#EA7317'], goal: ['#6C4FD0', '#7C5CFA'], hobby: ['#D4497A', '#E3A008', '#D99100'], leisure: ['#1C9DB0', '#0EA5C6', '#0B9CC0'], health: ['#8AA12A', '#22A55B'], self: ['#A0629E', '#E0559B'], sleep: ['#4B5876', '#55627A'], waster: ['#C7372F', '#E5484D'] };
 const SHUTDOWN = ["Tomorrow's MIT written", 'Laptop closed', 'Phone on alerts only'];
@@ -46,6 +56,7 @@ function seedConfig() {
       dayStart: 360, dayEnd: 1410, bedtime: 1350, buffer: 0.2, sound: true, theme: 'system',
       balance: { goal: 30, hobby: 15, leisure: 15, family: 25, health: 15 },
     },
+    types: clone(SEED_TYPES),
     cats: clone(SEED_CATS),
     templates: [
       { id: 'tpl_work', name: 'Workday', version: 1, days: [1, 2, 3, 4, 5], blocks: [
@@ -105,6 +116,13 @@ function mergeConfig(saved) {
   out.cats = (out.cats || []).slice();
   s.cats.forEach(c => { if (!ids.has(c.id)) out.cats.push(c); });
   out.cats = out.cats.map(c => (OLD_SEED_COLORS[c.id] || []).includes(String(c.color).toUpperCase()) ? Object.assign({}, c, { color: s.cats.find(x => x.id === c.id).color }) : c);
+  const tids = new Set((Array.isArray(saved.types) ? saved.types : []).map(t => t.id));
+  out.types = (Array.isArray(saved.types) ? saved.types : []).slice();
+  s.types.forEach(t => { if (!tids.has(t.id)) out.types.push(t); });
+  out.types = out.types.map(t => FIXED_TYPES.includes(t.id) && t.deleted ? Object.assign({}, t, { deleted: false }) : t);
+  // every category gets a live type: seed default, then the old group, else Non-goals
+  const liveT = new Set(out.types.filter(t => !t.deleted).map(t => t.id));
+  out.cats = out.cats.map(c => liveT.has(c.type) ? c : Object.assign({}, c, { type: [(s.cats.find(x => x.id === c.id) || {}).type, OLD_GROUP_TYPE[c.group], 'nongoal'].find(x => x && liveT.has(x)) || 'office' }));
   ['templates', 'rules', 'items', 'boredom'].forEach(k => { if (!Array.isArray(out[k])) out[k] = s[k]; });
   migrateTemplates(out);
   return out;
@@ -136,16 +154,18 @@ function migrateTemplates(cfg) {
   return true;
 }
 
-const catOf = (cfg, id) => cfg.cats.find(c => c.id === id) || { id, name: id || '?', color: '#888', group: 'fixed' };
+const catOf = (cfg, id) => cfg.cats.find(c => c.id === id) || { id, name: id || '?', color: '#888', type: 'office' };
+const liveTypes = cfg => (cfg.types || []).filter(t => !t.deleted);
+const typeOf = (cfg, id) => (cfg.types || []).find(t => t.id === id) || { id, name: id || '?' };
 const liveCats = cfg => cfg.cats.filter(c => !c.deleted);
-const isSleep = (cfg, id) => id === 'sleep';
+const isSleep = (cfg, id) => catOf(cfg, id).type === 'sleep';
 const isWaste = (cfg, id) => id === 'waster';
 // your free-time mix: every category you gave a balance share
 const freeCats = cfg => liveCats(cfg).filter(c => +((cfg.settings.balance || {})[c.id]) > 0).map(c => c.id);
 const CAT_COLORS = ['#2F7BF5', '#F07A1A', '#7B5CFA', '#E6A100', '#09A6C9', '#1FAE5B', '#E54C9A', '#C2185B', '#6E7A91'];
-function addCat(cfg, name) {
+function addCat(cfg, name, type) {
   const used = new Set(liveCats(cfg).map(c => String(c.color).toUpperCase()));
-  const c = { id: 'c_' + uid(), name: String(name || 'New category').trim() || 'New category', color: CAT_COLORS.find(x => !used.has(x)) || '#888888' };
+  const c = { id: 'c_' + uid(), name: String(name || 'New category').trim() || 'New category', color: CAT_COLORS.find(x => !used.has(x)) || '#888888', type: liveTypes(cfg).some(t => t.id === type) ? type : 'nongoal' };
   cfg.cats.push(c);
   return c;
 }
@@ -162,6 +182,20 @@ function deleteCat(cfg, id, to) {
   if (cfg.settings.balance) delete cfg.settings.balance[id];
   c.deleted = true;
   return moved;
+}
+function addType(cfg, name) {
+  const t = { id: 't_' + uid(), name: String(name || '').trim() || 'New type' };
+  cfg.types.push(t);
+  return t;
+}
+/* office and sleep stay. Categories of a deleted type move to `to`. */
+function deleteType(cfg, id, to) {
+  const t = (cfg.types || []).find(x => x.id === id);
+  if (!t || t.deleted || FIXED_TYPES.includes(id) || to === id || !liveTypes(cfg).some(x => x.id === to)) return false;
+  let n = 0;
+  cfg.cats.forEach(c => { if (c.type === id) { c.type = to; n++; } });
+  t.deleted = true;
+  return n;
 }
 const catUse = (cfg, id) => ({ rules: cfg.rules.filter(r => r.cat === id && !r.deleted && !r.to).length, items: cfg.items.filter(i => i.cat === id).length });
 
@@ -362,7 +396,7 @@ function ensureTfCats(cfg, tf) {
   tfGoals(cfg, tf).forEach(g => {
     const n = String(g.tfCat || '').trim();
     if (!n || cfg.cats.some(c => norm(c.name) === norm(n))) return;
-    addCat(cfg, n); added.push(n);
+    addCat(cfg, n, 'goal'); added.push(n);
   });
   return added;
 }
@@ -751,7 +785,7 @@ function applyOp(cfg, store, op, today) {
 
 root.DBX = {
   pad, dkey, parseKey, addDays, dow, weekStart, hm, toMin, durTxt, hrs, clamp, clone, uid, DOW, norm, zoneOf,
-  seedConfig, mergeConfig, migrateTemplates, catOf, liveCats, isSleep, isWaste, freeCats, addCat, deleteCat, catUse, SEED_CATS, SHUTDOWN, WEEK_SLOTS,
+  seedConfig, mergeConfig, migrateTemplates, catOf, liveCats, isSleep, isWaste, freeCats, addCat, deleteCat, catUse, SEED_CATS, SEED_TYPES, FIXED_TYPES, liveTypes, typeOf, addType, deleteType, SHUTDOWN, WEEK_SLOTS,
   overlaps, clashWith, carve, ruleClash, makeRoom, backupSlot,
   activeRules, templateFor, attachObjs, blockFrom, weekItemsFor, buildDay, getDay, planSnapshot, lockIfDue, resetDay,
   editRule, endRule, ruleLive, lanes, live, intervals, unionMin, gaps,
