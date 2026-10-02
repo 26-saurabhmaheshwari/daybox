@@ -307,6 +307,34 @@ async function tell(text, date, dry) {
   if (dry) { console.log(p.summary + '\n' + (p.ops || []).map((o, i) => '  ' + (i + 1) + '. ' + o.label + ' - ' + (o.why || '')).join('\n')); return 0; }
   return proposeObj(p, { kind: 'tell', text });
 }
+/* "Fill the rest of today" (or a day ahead): every free slot from now to bedtime, applied by itself */
+function fillPrompt(out, a, errs) {
+  return ['You are Saarthi, the DayBox time coach. The user tapped "Fill the rest of the day" for ' + a.date + '. Fill its free time from ' + X.hm(a.from || 0) + ' to bedtime. The time now is in DATA.now.',
+    saarthiRules(),
+    POSSIBLE,
+    'Use that day\'s freeGaps (DATA.days). Up to 5 addBlock, each fully inside a free gap, none overlapping. Leave about ' + out.settings.buffer + ' of the free time empty and gaps under 30 min alone. Choose by: nuggets with time left (their chunk, never longer), weekPicks not placed yet, then what is behind the balance, then non goals least done lately. Late in the day prefer light things; nothing deep after 21:00. Never touch existing blocks.',
+    'Exact shape: {"label":"Sat: Painting 17:00","why":"...","op":{"type":"addBlock","date":"' + a.date + '","block":{"start":1020,"dur":30,"title":"Painting & mandala","cat":"hobby"}}}. Minutes from midnight; title = the item name; cat = an id from DATA.categories.',
+    'summary = one line for the user on what you filled and why.',
+    errs ? 'Your last answer failed these checks, fix them:\n' + errs : '',
+    'Reply with ONLY the proposal JSON object ({"title","summary","ops"}). No prose, no code fence. Do not use tools.',
+    'DATA:\n' + JSON.stringify(out)].filter(Boolean).join('\n\n');
+}
+async function fillRest(a) {
+  const out = await buildPull(3);
+  let p = await askClaude(fillPrompt(out, a)), res;
+  for (let i = 0; i < 2; i++) {
+    res = checkOps(await loadAll(await getUid()), p.ops || [], today());
+    if (!res.errs.length || i) break;
+    p = await askClaude(fillPrompt(out, a, res.errs.join('\n')));
+  }
+  p.ops = res.keep; // keep what fits, drop the rest
+  if (!p.ops.length) throw new Error('Nothing fitted: ' + (res.errs[0] || 'no free slot'));
+  p.title = 'Filled ' + a.date.slice(5) + ' from ' + X.hm(a.from || 0);
+  await proposeObj(p, { kind: 'fill', lenient: true });
+  const n = await applyReq(LAST_REQ);
+  MOVE_MSG = (p.summary || ('Filled ' + n + ' slots')) + '';
+  return n;
+}
 /* "Move to next good slot" from the block editor: Claude picks the next slot where it can really happen, and it is applied */
 function movePrompt(out, a, errs) {
   return ['You are Saarthi, the DayBox time coach. The user tapped "Move to next good slot" on a block. Move it to the best next slot. The time now is in DATA.now.',
@@ -364,20 +392,22 @@ async function watch() {
     if (Date.now() - (a.at || 0) > 5 * 60e3) return write(uid, ref, Object.assign({}, a, { state: 'stale' }));
     busy = true;
     const t0 = Date.now(), stamp = () => new Date().toLocaleTimeString();
-    console.log(stamp() + (a.kind === 'week' ? ' week plan' + (a.auto ? ' (nightly)' : '') : a.kind === 'tell' ? ' tell: ' + String(a.text || '').slice(0, 80) : a.kind === 'move' ? ' move: ' + a.title + ' ' + a.date : ' asked for ' + a.date + ' (' + (a.slots || '?') + ' slots)'));
+    console.log(stamp() + (a.kind === 'week' ? ' week plan' + (a.auto ? ' (nightly)' : '') : a.kind === 'tell' ? ' tell: ' + String(a.text || '').slice(0, 80) : a.kind === 'move' ? ' move: ' + a.title + ' ' + a.date : a.kind === 'fill' ? ' fill: ' + a.date + ' from ' + X.hm(a.from || 0) : a.kind === 'undo' ? ' undo: ' + a.req : ' asked for ' + a.date + ' (' + (a.slots || '?') + ' slots)'));
     try {
       await write(uid, ref, Object.assign({}, a, { state: 'working', pickedAt: Date.now() }));
       let n;
       if (a.kind === 'week') n = await planWeek();
       else if (a.kind === 'tell') n = await tell(a.text, a.date);
       else if (a.kind === 'move') n = await moveSmart(a);
+      else if (a.kind === 'fill') n = await fillRest(a);
+      else if (a.kind === 'undo') n = await undoReq(a.req);
       else {
         const out = await buildPull(7);
         const p = await askClaude(fitPrompt(out, a));
         (p.ops || []).forEach(o => { if (o.op && !o.op.date) o.op.date = a.date; });
         n = await proposeObj(p, { kind: 'ideas' });
       }
-      await write(uid, ref, Object.assign({}, a, { state: 'done', n, doneAt: Date.now() }, a.kind === 'move' ? { msg: MOVE_MSG } : {}));
+      await write(uid, ref, Object.assign({}, a, { state: 'done', n, doneAt: Date.now() }, a.kind === 'move' || a.kind === 'fill' ? { msg: MOVE_MSG } : {}));
       console.log(stamp() + ' sent ' + n + ' ideas in ' + Math.round((Date.now() - t0) / 1000) + 's');
     } catch (e) {
       console.error(stamp() + ' failed: ' + e.message);
@@ -401,7 +431,7 @@ async function decide(arg, accept) {
     const before = o.op.date ? (store.days[o.op.date] || null) : A.rawCfg;
     const r = X.applyOp(cfg, store, o.op, t);
     if (r.error) { o.state = 'failed'; o.error = r.error; console.log('  ' + o.id + ' failed: ' + r.error); continue; }
-    await write(uid, 'planner/' + uid + '/history/' + Date.now() + '-' + o.id, { at: Date.now(), by: 'saarthi', kind: 'apply', op: o.op, path: relPath, before });
+    await write(uid, 'planner/' + uid + '/history/' + Date.now() + '-' + o.id, { at: Date.now(), by: 'saarthi', kind: 'apply', op: o.op, path: relPath, before, req: o.req || null });
     if (r.day) { X.mergeTouching(r.day); r.day.updated = Date.now(); store.days[r.day.date] = r.day; dayDirty[r.day.date] = r.day; }
     if (r.cfg) cfgDirty = true;
     o.state = 'accepted'; o.decidedAt = Date.now();
@@ -438,6 +468,24 @@ async function undo() {
   console.log('Restored ' + rel + ' to before: ' + JSON.stringify(h.v.op));
 }
 
+/* Undo a whole request (a night's plan, a Tell, a move, a fill): every day / config it touched goes back to before it */
+async function undoReq(reqId) {
+  const uid = await getUid();
+  const hs = await db.collection('planner/' + uid + '/history').where('req', '==', reqId).get();
+  const list = []; hs.forEach(d => { const v = d.data(); if (!v.undone) list.push({ id: d.id, v }); });
+  if (!list.length) throw new Error('Nothing to undo for that request');
+  const first = {}; list.sort((a, b) => (a.v.at || 0) - (b.v.at || 0)).forEach(h => { if (h.v.path && !first[h.v.path]) first[h.v.path] = h; });
+  for (const rel of Object.keys(first)) {
+    let before = first[rel].v.before;
+    if (before && before.config && rel === 'meta/config') before = before.config;
+    if (before) { before.updated = Date.now(); await write(uid, 'planner/' + uid + '/' + rel, before); } else await remove(uid, 'planner/' + uid + '/' + rel);
+  }
+  for (const h of list) await write(uid, 'planner/' + uid + '/history/' + h.id, Object.assign({}, h.v, { undone: Date.now() }));
+  const s = await db.doc('planner/' + uid + '/meta/inbox').get();
+  if (s.exists) { const ib = s.data(); (ib.ops || []).forEach(o => { if (o.req === reqId && o.state === 'accepted') o.state = 'undone'; }); await write(uid, 'planner/' + uid + '/meta/inbox', ib); }
+  console.log('Undid ' + reqId + ': ' + Object.keys(first).join(', '));
+  return Object.keys(first).length;
+}
 async function status() {
   const uid = await getUid(); const s = await db.doc('planner/' + uid + '/meta/inbox').get();
   if (!s.exists) return console.log('Inbox empty.');
@@ -455,6 +503,7 @@ async function status() {
     else if (cmd === 'learn') { const txt = process.argv.slice(3).join(' ').trim(); if (!txt) die('usage: learn "text"'); await learn(txt); }
     else if (cmd === 'undo') await undo();
     else if (cmd === 'status') await status();
+    else if (cmd === 'undoreq') { if (!a1) die('usage: undoreq <request id>'); await undoReq(a1); }
     else if (cmd === 'watch') await watch();
     else if (cmd === 'tell') { const dry = process.argv.includes('--dry'); const txt = process.argv.slice(3).filter(x => x !== '--dry').join(' '); const n = await tell(txt, null, dry); if (!dry) console.log('Sent ' + n + ' to the inbox.'); }
     else if (cmd === 'week') { const n = await planWeek(a1 === '--dry'); if (a1 !== '--dry') console.log('Sent ' + n + ' to the inbox.'); }

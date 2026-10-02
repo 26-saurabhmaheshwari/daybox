@@ -125,6 +125,8 @@ document.addEventListener('dbx-ask', e => {
   const prev = ASK; ASK = e.detail || null;
   if (ASK && prev && prev.at === ASK.at && prev.state !== ASK.state) {
     if (ASK.state === 'done' && ASK.kind === 'move') toast(ASK.msg || 'Saarthi moved ' + (ASK.title || 'it') + '.', null, null, 15000);
+    else if (ASK.state === 'done' && ASK.kind === 'fill') toast((ASK.msg || 'Filled.') + ' (Undo in Saarthi)', null, null, 15000);
+    else if (ASK.state === 'done' && ASK.kind === 'undo') toast('Undone. The days are back to before.', null, null, 8000);
     else if (ASK.state === 'done' && ASK.kind === 'tell') toast('Saarthi has ' + (ASK.n || 0) + ' change' + (ASK.n === 1 ? '' : 's') + ' for you.', VIEW === 'saarthi' ? null : 'See', () => setView('saarthi'), 9000);
     else if (ASK.state === 'done') toast(ASK.kind === 'week' ? 'Week plan ready: ' + (ASK.n || 0) + ' blocks to accept in Saarthi.' : 'Saarthi sent ' + (ASK.n || 0) + ' idea' + (ASK.n === 1 ? '' : 's') + '.');
     else if (ASK.state === 'error') toast('Saarthi failed: ' + (ASK.error || 'unknown'), null, null, 9000);
@@ -452,7 +454,6 @@ let SUGS = [];
 let ASK = null, WATCH = null;
 const saAlive = () => !!(WATCH && Date.now() - WATCH.at < 150e3);
 const saBusy = date => !!(ASK && ASK.date === date && (ASK.state === 'asked' || ASK.state === 'working') && Date.now() - ASK.at < 5 * 60e3);
-const SUG_SEEN = new Set();  // ids already shown; + skips them for a fresh batch, cycles when all are seen
 const FIT_MAX = 5;  // your tasks + Saarthi suggestions, never more than 5 a day
 function fitFrom(d) { const s = CFG.settings, t = today(); return d.date === t ? Math.max(s.dayStart, Math.ceil(nowMin() / 15) * 15) : s.dayStart; }
 const durChip = m => Math.floor(m / 60) + ':' + pad(m % 60);
@@ -483,34 +484,15 @@ function fitHtml(d) {
       meta: b ? ' <span class="tc-at">' + hm(b.start) + '</span>' : '',
       right: '<button type="button" class="tc-x" data-act="fitdel" data-id="' + x.id + '" aria-label="Remove">×</button>' });
   }).join('');
-  const ops = (INBOX && INBOX.ops || []).map((o, i) => ({ o, i })).filter(({ o }) => (o.state === 'pending' || o.state === 'failed') && o.op && (o.op.date === d.date || (!o.op.date && d.date === t)));
-  const big = gs.filter(g => g.end - g.start >= 30).sort((a, b) => (b.end - b.start) - (a.end - a.start))[0];
-  const hide = d.sugHide || [];
-  const slots = Math.max(0, FIT_MAX - todos.length);
-  const opsShown = ops.slice(0, slots);
-  const titles = new Set(todos.map(x => norm(x.title)));
-  const pool = big && slots > opsShown.length ? X.suggest(CFG, STORE, TF, d.date, big, t, 8).filter(x => !hide.includes(x.item.id) && !titles.has(norm(x.item.title))) : [];
-  let fresh = pool.filter(x => !SUG_SEEN.has(x.item.id)); if (!fresh.length && pool.length) { SUG_SEEN.clear(); fresh = pool; }
-  SUGS = fresh.slice(0, slots - opsShown.length).map(x => Object.assign(x, { gap: big }));
-  const canMore = pool.length > SUGS.length;
-  let sa = '';
-  if (opsShown.length || SUGS.length) {
-    sa += opsShown.map(({ o, i }) => { const isB = o.op.type === 'addBlock', td = o.op.type === 'addTodo' && o.op.todo, c = catOf(CFG, isB ? o.op.block.cat : td ? td.cat : 'goal');
-      return taskCard({ cls: 'sug', drag: isB ? 'op:' + i : '', label: isB ? o.op.block.title : o.label, c, title: isB ? o.op.block.title : td ? td.title : o.label, dur: isB ? o.op.block.dur || 30 : td ? td.min || 30 : 0,
-        tip: o.why || '',
-        right: '<button type="button" class="tc-ok" data-act="opfit" data-i="' + i + '" title="Accept" aria-label="Accept">' + ic('check') + '</button><button type="button" class="tc-x" data-act="oprej" data-i="' + i + '" aria-label="Reject">×</button>' }); }).join('');
-    sa += SUGS.map((sg, i) => taskCard({ cls: 'sug', drag: 'sug:' + i, label: sg.item.title, c: catOf(CFG, sg.item.cat), title: sg.item.title, dur: sg.min,
-      tip: sg.why,
-      right: '<button type="button" class="tc-ok" data-act="sugacc" data-i="' + i + '" title="Accept" aria-label="Accept">' + ic('check') + '</button><button type="button" class="tc-x" data-act="sughide" data-id="' + esc(sg.item.id) + '" aria-label="Not today">×</button>' })).join('');
-  }
-  if (todos.some(x => !x.done && !blockOf(d, x)) || SUGS.length || opsShown.length) h += '<div class="fb-note">Drag a task onto the clock to give it a time.</div>';
-  // Saarthi keeps its half even when empty; + shows a fresh batch of ideas
-  // + asks Claude on your PC while the watcher runs; else it cycles the built-in ideas
-  const ask = AUTH.signedIn && saAlive() && slots > 0, busy = ask && saBusy(d.date);
-  const plus = ask ? '<button type="button" class="fb-add sa' + (busy ? ' busy' : '') + '" data-act="sugask" title="' + (busy ? 'Saarthi is thinking' : 'Ask Saarthi') + '" aria-label="Ask Saarthi"' + (busy ? ' disabled' : '') + '>' + ic(busy ? 'spark' : 'plus') + '</button>'
-    : canMore ? '<button type="button" class="fb-add sa" data-act="sugmore" title="New ideas" aria-label="New ideas">' + ic('plus') + '</button>' : '';
-  const right = '<div class="fb-half"><div class="fb-cap sa">' + plus
-    + '<span class="fb-vt b">Saarthi</span></div><div class="fb-list">' + sa + '</div></div>';
+  SUGS = [];
+  if (todos.some(x => !x.done && !blockOf(d, x))) h += '<div class="fb-note">Drag a task onto the clock to give it a time.</div>';
+  // Saarthi's half: one tap fills every free slot left in the day, by itself
+  const busy = ASK && ASK.kind === 'fill' && ASK.date === d.date && (ASK.state === 'asked' || ASK.state === 'working') && Date.now() - ASK.at < 5 * 60e3;
+  const fillable = gs.filter(g => g.end - g.start >= 30).reduce((a, g) => a + g.end - g.start, 0);
+  const right = '<div class="fb-half"><div class="fb-cap sa"><span class="fb-vt b">Saarthi</span></div><div class="fb-list fb-fill">'
+    + (fillable ? '<button type="button" class="btn pri" data-act="fillrest"' + (busy ? ' disabled' : '') + '>' + ic('spark') + (busy ? 'Saarthi is filling...' : d.date === t ? 'Fill the rest of today' : 'Fill this day') + '</button>'
+      + '<div class="muted small">' + durTxt(fillable) + ' free in slots of 30 min or more. ' + (saAlive() ? 'Saarthi fills it by itself; Undo is in Saarthi.' : 'PC is off: DayBox fills it from your lists.') + '</div>'
+      : '<div class="muted small">No free slot of 30 min or more left.</div>') + '</div></div>';
   return '<div class="fitbox split"><div class="fb-half">' + h + '</div></div>' + right + '</div>';
 }
 function fitItem(key) {
@@ -1182,8 +1164,9 @@ function reqCard(g) {
     + (g.summary ? '<p style="margin:0 0 10px">' + esc(g.summary) + '</p>' : '')
     + (g.tips && g.tips.length ? '<ul style="margin:0 0 12px;padding-left:18px">' + g.tips.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '')
     + (pend ? reqPreview(g) : '')
-    + g.items.map(({ o, i }) => '<div class="op"><div><b>' + esc(opLabel(o)) + '</b>' + (o.why ? '<div class="muted small">' + esc(o.why) + '</div>' : '') + '</div><div class="row">' + (o.state === 'pending' || o.state === 'failed' ? (o.state === 'failed' ? '<span class="chip">failed</span>' : '') + '<button class="btn sm" data-act="oprej" data-i="' + i + '">Reject</button><button class="btn sm pri" data-act="opacc" data-i="' + i + '">Accept</button>' : '<span class="chip">' + esc(o.state) + '</span>') + '</div></div>').join('')
+    + g.items.map(({ o, i }) => '<div class="op' + (o.state === 'accepted' ? ' done' : o.state === 'undone' || o.state === 'rejected' ? ' off' : '') + '"><div><b>' + esc(opLabel(o)) + '</b>' + (o.why ? '<div class="muted small">' + esc(o.why) + '</div>' : '') + '</div><div class="row">' + (o.state === 'pending' || o.state === 'failed' ? (o.state === 'failed' ? '<span class="chip">failed</span>' : '') + '<button class="btn sm" data-act="oprej" data-i="' + i + '">Reject</button><button class="btn sm pri" data-act="opacc" data-i="' + i + '">Accept</button>' : '<span class="chip">' + esc(o.state) + '</span>') + '</div></div>').join('')
     + (pend > 1 ? '<div class="row" style="margin-top:10px;justify-content:flex-end"><button class="btn sm" data-act="reqrej" data-r="' + esc(g.id) + '">Reject all</button><button class="btn sm pri" data-act="reqacc" data-r="' + esc(g.id) + '">Accept all ' + pend + '</button></div>' : '')
+    + (!pend && g.items.some(x => x.o.state === 'accepted') && g.id !== 'r_old' ? '<div class="row" style="margin-top:10px;justify-content:flex-end"><button class="btn sm" data-act="requndo" data-r="' + esc(g.id) + '">Undo this</button></div>' : '')
     + '</div>';
 }
 async function decideOp(i, accept) {
@@ -1432,13 +1415,16 @@ const ACTS = {
     try { await DBXFB.pushInbox(fsSafe(INBOX)); } catch (e) {}
     render(); toast('Added to To fit. Place it when you are ready.');
   },
-  sugask: () => {
-    const d = AG_DAY; if (!d || !window.DBXFB || !DBXFB.uid) return;
-    const slots = FIT_MAX - (d.todo || []).length; if (slots <= 0) return toast(FIT_MAX + ' is the limit for a day.');
-    ASK = { at: Date.now(), date: d.date, slots, state: 'asked' }; render();
-    DBXFB.pushAsk(ASK).then(() => toast('Asked Saarthi. Ideas in about a minute.')).catch(e => { ASK = null; render(); toast('Could not ask: ' + e.message); });
-  },
   parttog: a => { const d = AG_DAY, k = a.dataset.k, p = DAY_PARTS.find(x => x[3] === k); if (!d || !p) return; PART_OPEN[d.date + '|' + k] = partFolded(d, k, p[2]); render(); },
+  fillrest: () => {
+    const d = AG_DAY; if (!d) return;
+    if (saAlive() && window.DBXFB && DBXFB.uid) {
+      ASK = { at: Date.now(), kind: 'fill', date: d.date, from: fitFrom(d), state: 'asked' }; render();
+      return DBXFB.pushAsk(ASK).then(() => toast('Saarthi is filling your free time.')).catch(e => { ASK = null; render(); toast('Could not ask: ' + e.message); });
+    }
+    doFill(d.date);
+  },
+  requndo: a => { if (!saAlive()) return toast('Start saarthi.js watch on your PC to undo.'); ASK = { at: Date.now(), kind: 'undo', req: a.dataset.r, state: 'asked' }; render(); DBXFB.pushAsk(ASK).then(() => toast('Undoing...')).catch(e => toast('Could not ask: ' + e.message)); },
   tellsend: () => {
     const el = $('#tellTxt'), text = (el ? el.value : '').trim();
     if (!text) { if (el) el.focus(); return; }
@@ -1453,8 +1439,6 @@ const ACTS = {
     ASK = { at: Date.now(), kind: 'week', state: 'asked' }; render();
     DBXFB.pushAsk(ASK).then(() => toast('Asked Saarthi to plan your week. About 2 minutes.')).catch(e => { ASK = null; render(); toast('Could not ask: ' + e.message); });
   },
-  sugmore: () => { SUGS.forEach(x => SUG_SEEN.add(x.item.id)); render(); },
-  sughide: a => { const d = AG_DAY; if (!d) return; d.sugHide = (d.sugHide || []).concat(a.dataset.id); saveDay(d); render(); },
   tips: () => { TIPS_OPEN = !TIPS_OPEN; render(); },
   gotoday: () => { CUR = today(); SCROLL_NOW = true; render(); },
   wprev: () => { WEEK = addDays(WEEK, -7); render(); },
