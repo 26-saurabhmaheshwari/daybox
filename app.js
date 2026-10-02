@@ -742,7 +742,6 @@ function viewToday() {
   const statTxt = d.untracked ? '' : '<span><b>' + durTxt(free) + '</b>free</span>';
   // the now bar lives in the header row, between the date and the buttons
   const mid = isToday ? nowBarHtml(d, '<span><b>' + durTxt(free) + '</b>free</span>') : '';
-  if (isToday && pendingOps()) top += '<div class="al" style="margin-bottom:10px">' + ic('saarthi', 's-ic') + '<span>Saarthi has <b>' + pendingOps() + '</b> suggestions.</span><button class="btn sm x" data-act="nav" data-v="saarthi">Open</button></div>';
   if (yday && yday.close && yday.close.mit && isToday) top += '<div class="al" style="margin-bottom:10px">★ <span>Today\'s MIT (from last night): <b>' + esc(yday.close.mit) + '</b></span></div>';
   if (d.untracked) top += '<div class="untracked">' + ic('lock', 's-ic') + '<span>Not tracked. DayBox was not used this day.</span><button class="btn sm" data-act="track-empty">Add what happened</button><button class="btn sm" data-act="track-routine">Fill from routine</button></div>';
   else if (d.virtual) top += '<div class="untracked">Preview from your routine' + (d.tpl ? ' (' + esc(d.tpl.name) + ')' : '') + '. It saves when you change something.</div>';
