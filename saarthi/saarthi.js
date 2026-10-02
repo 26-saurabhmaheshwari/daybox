@@ -134,10 +134,15 @@ async function propose(file) { await proposeObj(JSON.parse(fs.readFileSync(file,
 /* check ops in order on a copy; `today` may be edited (setStatus for what you did), other past days not */
 function checkOps(A, ops, t) {
   const cfg = X.clone(A.cfg), store = { days: X.clone(A.store.days) }, errs = [], keep = [];
+  // a nugget's chunk is its longest sitting: never a longer block (by title or itemId)
+  const nug = A.tf ? X.tfGoals(A.cfg, A.tf) : [];
+  const tooLong = (title, itemId, dur) => { const g = nug.find(x => (itemId && itemId === 'tf:' + x.id) || X.norm(x.name) === X.norm(title) || X.norm(x.name + ' · ' + x.mini) === X.norm(title)); return g && dur > g.chunk ? '"' + title + '" is ' + dur + ' min, its chunk (longest sitting) is ' + g.chunk + ' min' : null; };
   ops.forEach((o, i) => {
     let e = null;
     if (!o.op || !o.label) e = 'needs label + op';
     else if (o.op.date && o.op.date < t) e = 'date ' + o.op.date + ' is in the past';
+    else if (o.op.type === 'addBlock' && o.op.block && tooLong(o.op.block.title, o.op.block.itemId, o.op.block.dur)) e = tooLong(o.op.block.title, o.op.block.itemId, o.op.block.dur);
+    else if (o.op.type === 'moveBlock' && o.op.dur && tooLong(o.op.title, null, o.op.dur)) e = tooLong(o.op.title, null, o.op.dur);
     else { const r = X.applyOp(cfg, store, o.op, t); if (r.error) e = r.error; else if (r.day) store.days[r.day.date] = r.day; }
     if (e) errs.push((i + 1) + ': ' + e); else keep.push(o);
   });
@@ -236,7 +241,7 @@ function weekPrompt(out, r) {
   return ['You are Saarthi, the DayBox time coach. Plan the user\'s days ' + r.from + ' to ' + r.to + ' (a week plan, made the night before). The time now is in DATA.now.',
     saarthiRules(),
     'Task: look at how this week is going (DATA.days blocks and statuses, regular doneThisWeek vs perWeek, tenfoldGoals minutes left and chunk, thisWeekBalance vs balanceTarget, nonGoals least done lately, weekPlans, skippedByHour, learnings) and fill the free time of each day from ' + r.from + ' to ' + r.to + '.',
-    'Rules for this week plan (they replace the max 5 ops rule): only addBlock, up to 3 per day, 15 in total. Each block sits fully inside that day\'s freeGaps and clashes with nothing (also not with your other blocks that day). Leave at least ' + out.settings.buffer + ' of each day free. Deep work (goals, nuggets) in the hours the user keeps (see skippedByHour), light things in the evening. Behind goals and nuggets first, then the balance, then non goals. A nugget uses its chunk minutes; non goals 20-60m. Never touch pillars or recurring blocks. Set mit:true on one block per day only if that day has no MIT yet.',
+    'Rules for this week plan (they replace the max 5 ops rule): only addBlock, up to 3 per day, 15 in total. Each block sits fully inside that day\'s freeGaps and clashes with nothing (also not with your other blocks that day). Leave at least ' + out.settings.buffer + ' of each day free. Deep work (goals, nuggets) in the hours the user keeps (see skippedByHour), light things in the evening. Behind goals and nuggets first, then the balance, then non goals. A nugget block is its chunk minutes, never longer (the chunk is its longest sitting); non goals 20-60m. Never touch pillars or recurring blocks. Set mit:true on one block per day only if that day has no MIT yet.',
     POSSIBLE,
     'weekPicks marked NO TIME come first: place each one in this range (on its day if it has one), with its minutes, title = its text, block.itemId = its itemId, block.cat = its cat. Skip a pick that is already in the blocks of that week.',
     'label = "Day: activity HH:MM" (e.g. "Tue: Spanish 07:30"), max 5 words. why = one short line with a number from the data. summary = one line on how the week is going and what this plan fixes.',
