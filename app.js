@@ -35,6 +35,8 @@ let TAB = { bank: 'regular', routine: 'templates', insights: '7' };
 let TPL_EDIT = null;
 let SCROLL_NOW = true;
 let DRAGGING = false;
+const UNLOCKED = new Set();  // marked blocks unlocked for one edit; cleared when the editor closes or a drag ends
+const isMarked = b => !!b.status && b.status !== 'planned';
 
 // Tenfold, read-only: same browser storage when both apps run on the same site (or both from file://)
 function loadTenfoldLocal() {
@@ -118,6 +120,7 @@ const IC = {
   left: '<path d="M15 18l-6-6 6-6"/>', right: '<path d="M9 18l6-6-6-6"/>',
   plus: '<path d="M12 5v14M5 12h14"/>', more: '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
   lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/>',
+  unlock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 017.5-2"/>',
   check: '<path d="M20 6L9 17l-5-5"/>', fill: '<path d="M4 6h16M4 12h10M4 18h7"/><path d="M18 15v6M15 18h6"/>',
   moon: '<path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/>', reset: '<path d="M3 12a9 9 0 109-9 9.7 9.7 0 00-6.7 2.8L3 8"/><path d="M3 3v5h5"/>',
 };
@@ -146,7 +149,7 @@ function openSheet(html, bind) {
   bind && bind(sh);
   const f = sh.querySelector('input[type=text],textarea,select'); if (f && !isPhone()) f.focus();
 }
-function closeSheet() { $('#ov').hidden = true; $('#sheet').innerHTML = ''; }
+function closeSheet() { $('#ov').hidden = true; $('#sheet').innerHTML = ''; if (UNLOCKED.size) { UNLOCKED.clear(); if (typeof render === 'function') render(); } }
 $('#ov').addEventListener('click', e => { if (e.target.id === 'ov') closeSheet(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#ov').hidden) closeSheet(); });
 
@@ -194,13 +197,15 @@ function blockHtml(b, L, c, mode, ppm) {
   const needs = past && b.status === 'planned' && !c.virtual && b.cat !== 'sleep';
   const twice = c.twice && b.pillar && c.twice.has(b.title) && b.status === 'planned';
   const locked = b.pillar && mode !== 'tpl';
-  const cls = ['blk', 'st-' + (b.status || 'planned'), needs ? 'needs' : '', twice ? 'twice' : '', locked ? 'locked' : ''].join(' ');
+  const doneLock = mode !== 'tpl' && isMarked(b) && !UNLOCKED.has(b.id);
+  const cls = ['blk', 'st-' + (b.status || 'planned'), needs ? 'needs' : '', twice ? 'twice' : '', locked ? 'locked' : '', doneLock ? 'done-lock' : '', mode !== 'tpl' && isMarked(b) && !doneLock ? 'unlocked' : ''].join(' ');
   let inner = '<div class="b-t">' + (b.mit ? '<span title="MIT">★</span>' : '') + (locked ? ic('lock', 's-ic') : '') + '<span>' + esc(b.title) + '</span>' + (needs ? '<span class="q" title="How did it go?">?</span>' : '') + '</div>';
   if (h >= 30) inner += '<div class="b-m">' + hm(b.start) + '–' + hm(b.start + b.dur) + ' · ' + durTxt(b.dur) + (b.pillar && b.backup != null && !b.strict ? ' · backup ' + hm(b.backup) : '') + '</div>';
   const att = X.attachObjs(b.attach);
-  if (att.length && h >= 50 && mode !== 'week') inner += '<div class="b-a">' + att.map((a, ai) => '<label class="b-chk"><input type="checkbox" data-ai="' + ai + '"' + (a.done ? ' checked' : '') + (mode === 'tpl' ? ' disabled' : '') + '>' + esc(a.t) + '</label>').join('') + '</div>';
+  if (att.length && h >= 50 && mode !== 'week') inner += '<div class="b-a">' + att.map((a, ai) => '<label class="b-chk"><input type="checkbox" data-ai="' + ai + '"' + (a.done ? ' checked' : '') + (mode === 'tpl' || doneLock ? ' disabled' : '') + '>' + esc(a.t) + '</label>').join('') + '</div>';
   if (b.checks && mode !== 'week') for (let m = Math.ceil((b.start + 1) / 30) * 30; m < b.start + b.dur; m += 30) inner += '<i class="tick" style="top:' + ((m - b.start) * ppm) + 'px" title="check ' + hm(m) + '"></i>';
-  if (!locked && c.editable) inner += '<div class="b-rz" title="Drag to resize"></div>';
+  if (!locked && !doneLock && c.editable) inner += '<div class="b-rz" title="Drag to resize"></div>';
+  if (mode !== 'tpl' && isMarked(b)) inner += doneLock ? '<button type="button" class="b-unlock" title="Unlock to change" aria-label="Unlock to change">' + ic('lock') + '</button>' : '<span class="b-unlock on" title="Unlocked for one change">' + ic('unlock') + '</span>';
   return '<div class="' + cls + '" data-id="' + b.id + '" style="--c:' + cat.color + ';top:' + top + 'px;height:' + h + 'px;left:calc(' + (lane * w) + '% + 3px);width:calc(' + w + '% - 6px)" title="' + esc(b.title) + ' ' + hm(b.start) + '–' + hm(b.start + b.dur) + '">' + inner + '</div>';
 }
 function gridHtml(cols, mode, ppm) {
@@ -238,6 +243,9 @@ function bindGrid(host, cols, mode, ppm, h) {
   };
   host.onpointerdown = e => {
     if (e.button > 0) return;
+    const ul = e.target.closest('button.b-unlock');
+    if (ul) { e.preventDefault(); e.stopPropagation(); UNLOCKED.add(ul.closest('.blk').dataset.id); render(); toast('Unlocked for one change. Tap the block to edit or drag it.'); return; }
+    if (e.target.closest('.blk.done-lock')) return;
     if (e.target.closest('.b-chk,.gap,.g-ch')) return;
     const colEl = e.target.closest('.g-col'); if (!colEl) return;
     const ci = +colEl.dataset.ci, c = cols[ci];
@@ -308,6 +316,7 @@ function bindGrid(host, cols, mode, ppm, h) {
 const sortBlocks = d => d.blocks.sort((a, b) => a.start - b.start);
 const dayHandlers = {
   onCommit({ c, b, to, start, dur }) {
+    UNLOCKED.clear();
     const from = c.day, dest = to.day;
     const fb = from.blocks.find(x => x.id === b.id); if (!fb) return render();
     fb.start = start; fb.dur = dur;
