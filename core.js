@@ -342,10 +342,16 @@ function tfGoals(cfg, tf) {
   const SEC = { active: 'Live nugget', progress: 'This quarter', yearly: 'Yearly' };
   // only live-nugget minis (goals carved out of a parent goal): the small pieces you are on now
   return tf.goals.filter(g => g && g.parentId && g.sec === 'active' && !g.deleted && !g.done).map(g => {
-    const tfCat = g.cat || ((tf.goals.find(p => p.id === g.parentId) || {}).cat) || '';
+    const par = tf.goals.find(p => p.id === g.parentId) || {};
+    const tfCat = g.cat || par.cat || '', unit = g.unit || par.unit || '';
+    // minutes per unit, same rule as Tenfold's goalMinPer (a mini inherits its parent's)
+    const mpu = g.minPerUnit != null && g.minPerUnit !== '' ? g.minPerUnit : par.minPerUnit;
+    const minPer = mpu != null && mpu !== '' ? (+mpu || 0) : /min/i.test(unit) ? 1 : /hour|hr/i.test(unit) ? 60 : 0;
+    const left = Math.max(0, (+g.target || 0) - (+g.cur || 0));
     const m = (cfg.tf.goalMap || {})[g.id] || {};
-    return { id: g.id, name: g.name, tfCat, sec: g.sec, secLabel: SEC[g.sec], cur: g.cur, target: g.target, unit: g.unit,
-      on: m.on == null ? g.sec === 'active' : !!m.on, cat: tfCatId(cfg, tfCat), min: m.min || 45, perWeek: m.perWeek || 3 };
+    return { id: g.id, name: g.name, tfCat, sec: g.sec, secLabel: SEC[g.sec], cur: g.cur, target: g.target, unit, left,
+      leftMin: minPer && +g.target ? Math.round(left * minPer) : null, // null: unit is not time, so DayBox cannot tell minutes left
+      cat: tfCatId(cfg, tfCat), chunk: m.chunk || m.min || 45 };
   });
 }
 /* a nugget sits in the DayBox category with the same name as its Tenfold category */
@@ -362,7 +368,8 @@ function ensureTfCats(cfg, tf) {
 }
 function candidates(cfg, tf) {
   const list = cfg.items.filter(i => !i.deleted).map(i => Object.assign({}, i)); // dreams are never 'done': they keep getting time
-  if (cfg.tf.on) tfGoals(cfg, tf).filter(g => g.on).forEach(g => list.push({ id: 'tf:' + g.id, kind: 'regular', title: g.name, cat: g.cat, min: g.min, perWeek: g.perWeek, energy: 'deep', zone: 'any', src: 'tenfold' }));
+  // nuggets come in chunks until Tenfold says nothing is left (done blocks here do not count until you log them in Tenfold)
+  if (cfg.tf.on) tfGoals(cfg, tf).filter(g => !(+g.target) || g.left > 0).forEach(g => list.push({ id: 'tf:' + g.id, kind: 'nugget', title: g.name, cat: g.cat, min: g.chunk, leftMin: g.leftMin, energy: 'deep', zone: 'any', src: 'tenfold' }));
   return list;
 }
 const matches = (b, it) => b.itemId === it.id || norm(b.title) === norm(it.title);
@@ -401,7 +408,7 @@ function suggest(cfg, store, tf, date, gap, today, n) {
   const day = getDay(store, cfg, date, today);
   const scored = [];
   candidates(cfg, tf).forEach(it => {
-    const need = it.kind === 'fun' ? funMin(it, free) : it.min || 30;
+    const need = it.kind === 'fun' ? funMin(it, free) : it.kind === 'nugget' && it.leftMin != null ? Math.max(15, Math.min(it.min, Math.ceil(it.leftMin / 5) * 5)) : it.min || 30;
     if (need > free && !(free >= 25 && free >= need * 0.5)) return;
     const fit = Math.max(15, Math.floor(Math.min(need, free) / 5) * 5);
     let s = 0; const why = [];
@@ -409,7 +416,8 @@ function suggest(cfg, store, tf, date, gap, today, n) {
       const done = itemCount(days, it), per = it.perWeek || 3, planned = itemCount(days, it, ['planned']), behind = Math.max(0, per - done - planned);
       if (behind === 0) { s += 0.2; why.push(done + '/' + per + ' this week, on track'); }
       else { s += 2 + 2 * behind / per + Math.min(1.5, behind / daysLeft * 1.5); why.push(done + '/' + per + ' this week'); }
-      if (it.src === 'tenfold') why.push('Tenfold goal');
+    } else if (it.kind === 'nugget') {
+      s += 2.5; why.push('Tenfold nugget' + (it.leftMin != null ? ', ' + durTxt(it.leftMin) + ' left' : ''));
     } else if (it.kind === 'fun') {
       const ago = lastDone(store, it, date);
       s += 1.2 + (ago == null ? 1.5 : Math.min(1.5, ago / 7)); why.push(ago == null ? 'not done lately' : 'last done ' + ago + 'd ago');

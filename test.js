@@ -209,6 +209,16 @@ t('hobbies/leisure: no length of their own, sized to the gap, least done lately 
   assert(X.candidates(m, null).some(i => i.id === 'd1'));
   assert.strictEqual(X.hoursDone(st, m.items[0]), 60);
 });
+t('nuggets: chunk from you, minutes left from Tenfold, gone when nothing is left', () => {
+  const m = X.seedConfig(); m.items = []; m.tf.goalMap = { a: { chunk: 30 } };
+  const tf = { goals: [{ id: 'p', name: 'Fit', cat: 'Health', unit: 'hours', sec: 'yearly' }, { id: 'a', name: 'Run', sec: 'active', parentId: 'p', cur: 1.8, target: 2 },
+    { id: 'b', name: 'Swim', sec: 'active', parentId: 'p', cur: 5, target: 5 }, { id: 'c', name: 'Pages', sec: 'active', parentId: 'p', unit: 'pages', minPerUnit: 0, cur: 1, target: 9 }] };
+  const gs = X.tfGoals(m, tf), a = gs.find(g => g.id === 'a');
+  assert.strictEqual(a.leftMin, 12); assert.strictEqual(a.chunk, 30); assert.strictEqual(gs.find(g => g.id === 'c').leftMin, null);
+  const ids = X.candidates(m, tf).map(i => i.id); assert(ids.includes('tf:a') && ids.includes('tf:c') && !ids.includes('tf:b'));
+  const s = X.suggest(m, { days: {} }, tf, TODAY, { start: 600, end: 720 }, TODAY, 5).find(x => x.item.id === 'tf:a');
+  assert.strictEqual(s.min, 15); // only 12 min left, so a short chunk
+});
 t('my-routine.json loads', () => {
   if (!fs.existsSync(__dirname + '/my-routine.json')) return;
   const o = JSON.parse(read('my-routine.json')); const m = X.mergeConfig(o.config);

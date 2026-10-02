@@ -555,9 +555,9 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
         }),
       ];
     } catch (e) { ev('dbx-sync-error', 'Could not load your data: ' + (e.code || e.message) + '. Check the Firestore Rules block for planner.'); }
+    // Tenfold, live and read-only: a log or a new nugget there shows here within seconds
     try {
-      const t = await getDoc(doc(db, 'users', uid));
-      if (t.exists()) { const d = t.data(); ev('dbx-tenfold', { goals: d.goals || [], sanyam: d.sanyam || [], sanyamcfg: d.sanyamcfg || {}, src: 'cloud' }); }
+      unsub.push(onSnapshot(doc(db, 'users', uid), t => { if (t.exists()) { const d = t.data(); ev('dbx-tenfold', { goals: d.goals || [], sanyam: d.sanyam || [], sanyamcfg: d.sanyamcfg || {}, src: 'cloud' }); } }, e => console.warn('tenfold read', e)));
     } catch (e) { console.warn('tenfold read', e); }
   });
 </script>
@@ -582,7 +582,7 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 <div id="ov" hidden><div id="sheet" role="dialog" aria-modal="true"></div></div>
 <div id="toast" hidden></div>
 <div id="printArea"></div>
-<script src="core.js?v=54"></script>
-<script src="app.js?v=54"></script>
+<script src="core.js?v=55"></script>
+<script src="app.js?v=55"></script>
 </body>
 </html>
