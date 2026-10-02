@@ -564,6 +564,18 @@ function applyOp(cfg, store, op, today) {
     t.version = (t.version || 1) + 1;
     return { cfg: true };
   }
+  if (op.type === 'addRule') {
+    const r = Object.assign({ id: uid(), from: today, to: null, attach: [], pillar: false, backup: null, strict: false }, op.rule || {});
+    if (!r.title || r.start == null || !r.dur || !Array.isArray(r.days) || !r.days.length) return { error: 'recurring block needs title, start, dur, days' };
+    cfg.rules.push(r);
+    return { cfg: true };
+  }
+  if (op.type === 'editRule') {
+    const r = cfg.rules.find(x => ruleLive(x, today) && norm(x.title) === norm(op.title));
+    if (!r) return { error: 'recurring block "' + op.title + '" not found' };
+    editRule(cfg, r.id, op.patch || {}, today);
+    return { cfg: true };
+  }
   if (op.type === 'addItem') { cfg.items.push(Object.assign({ id: uid(), kind: 'dream', min: 30, energy: 'light', zone: 'any' }, op.item)); return { cfg: true }; }
   if (op.type === 'setBalance') { cfg.settings.balance = Object.assign({}, op.balance); return { cfg: true }; }
   return { error: 'unknown op ' + op.type };

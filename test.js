@@ -120,6 +120,17 @@ t('applyOp: day + template + errors', () => {
   assert(r2.cfg); assert.strictEqual(c.templates[0].blocks[0].start, 600); assert.strictEqual(c.templates[0].version, 2);
   assert(X.applyOp(c, s, { type: 'moveBlock', date: TODAY, title: 'Nope', start: 1 }, TODAY).error);
 });
+t('applyOp: addRule + editRule are effective-dated', () => {
+  const c = X.clone(cfg), s = { days: {} };
+  assert(X.applyOp(c, s, { type: 'addRule', rule: { title: '32co standup', cat: 'office', start: 630, dur: 30, days: [1, 2, 3, 4, 5] } }, TODAY).cfg);
+  assert(X.applyOp(c, s, { type: 'addRule', rule: { title: 'x' } }, TODAY).error);
+  assert(X.applyOp(c, s, { type: 'editRule', title: 'Morning pillar', patch: { title: 'Morning prayer (Sundarkand)' } }, TODAY).cfg);
+  assert(X.buildDay(c, '2026-10-05').blocks.some(b => b.title === 'Morning prayer (Sundarkand)' && b.pillar && b.backup === 1080));
+  assert(X.buildDay(c, '2026-10-05').blocks.some(b => b.title === '32co standup'));
+  assert(!X.activeRules(c, '2026-09-30').some(r => r.title === '32co standup'));
+  assert(X.activeRules(c, '2026-09-30').some(r => r.title === 'Morning pillar'));
+  assert(X.applyOp(c, s, { type: 'editRule', title: 'Nope', patch: {} }, TODAY).error);
+});
 t('my-routine.json loads', () => {
   if (!fs.existsSync(__dirname + '/my-routine.json')) return;
   const o = JSON.parse(read('my-routine.json')); const m = X.mergeConfig(o.config);
