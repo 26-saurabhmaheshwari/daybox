@@ -155,11 +155,12 @@ function setView(v) { if (v === 'plan') { v = 'bank'; TAB.bank = 'week'; } VIEW 
 
 /* ---------- toast + sheet ---------- */
 let toastT = null;
-/* deletes ask first: the first tap turns the button into a red "Delete?", a second tap within 4s does it */
-function confirmTap(btn, fn) {
-  if (btn.dataset.armed) return fn();
-  btn.dataset.armed = '1'; const was = btn.innerHTML; btn.innerHTML = 'Delete?'; btn.classList.add('danger', 'armed');
-  setTimeout(() => { if (!btn.isConnected) return; delete btn.dataset.armed; btn.innerHTML = was; btn.classList.remove('danger', 'armed'); }, 4000);
+/* deletes ask first, in a popup: Cancel is the safe default, Delete sits on the other side */
+function confirmDel(name, note, fn) {
+  openSheet('<div class="sh-h"><h2>Delete ' + esc(name) + '?</h2><button class="iconbtn" data-x aria-label="Close">×</button></div>'
+    + (note ? '<p class="hint" style="margin-top:-4px">' + esc(note) + '</p>' : '')
+    + '<div class="sh-f"><button class="btn danger l" data-yes>Delete</button><button class="btn pri" data-x>Cancel</button></div>',
+    sh => { $('[data-yes]', sh).onclick = () => { closeSheet(); fn(); }; });
 }
 function toast(msg, label, fn, ms) {
   const t = $('#toast');
@@ -946,7 +947,7 @@ function viewBank() {
         b.onclick = () => { const v = inp.value.trim(); if (!v) return inp.focus(); CFG.items.push({ id: uid(), kind: 'fun', title: v, cat: b.dataset.funadd }); saveCfg(); render(); };
         inp.onkeydown = e => { if (e.key === 'Enter') b.click(); };
       });
-      $$('[data-fundel]').forEach(b => { b.onclick = () => confirmTap(b, () => { const it = CFG.items.find(i => i.id === b.dataset.fundel); it.deleted = true; saveCfg(); render(); toast('Removed ' + it.title, 'Undo', () => { it.deleted = false; saveCfg(); render(); }); }); });
+      $$('[data-fundel]').forEach(b => { const it = CFG.items.find(i => i.id === b.dataset.fundel); b.onclick = () => confirmDel(it.title, 'It leaves your ' + (it.cat === 'leisure' ? 'Leisure' : 'Hobbies') + ' list. Past days keep it.', () => { it.deleted = true; saveCfg(); render(); toast('Removed ' + it.title, 'Undo', () => { it.deleted = false; saveCfg(); render(); }); }); });
       $$('[data-bal]').forEach(r => {
         r.oninput = () => { $('#bv_' + r.dataset.bal).textContent = r.value + '%'; const sum = $$('[data-bal]').reduce((a, x) => a + +x.value, 0); $('#balSum').textContent = 'Total ' + sum + '% (it is scaled to 100%).'; };
         r.onchange = () => { CFG.settings.balance[r.dataset.bal] = +r.value; saveCfg(); render(); };
@@ -1028,7 +1029,7 @@ function openRule(id) {
     let days = r.days.slice();
     $$('#rDays button', sh).forEach(b => { b.onclick = () => { const d = +b.dataset.d; days = days.includes(d) ? days.filter(x => x !== d) : days.concat(d); b.classList.toggle('on'); }; });
     const del = $('[data-del]', sh);
-    if (del) del.onclick = () => confirmTap(del, () => { closeSheet(); delRule(id); });
+    if (del) del.onclick = () => confirmDel(r.title, 'All its versions go, and its planned blocks from today. Days you already saved keep it.', () => delRule(id));
     $('[data-save]', sh).onclick = () => {
       const title = $('#rTitle', sh).value.trim(); if (!title) return $('#rTitle', sh).focus();
       const pillar = $('#rPillar', sh).checked, strict = pillar && $('#rStrict', sh).checked, bv = $('#rBackup', sh).value;
@@ -1441,7 +1442,7 @@ const ACTS = {
   planws: a => { PLAN_WS = a.dataset.ws; render(); },
   plansave: savePlan,
   rule: a => openRule(a.dataset.id),
-  ruledel: a => confirmTap(a, () => delRule(a.dataset.id)),
+  ruledel: a => { const r = CFG.rules.find(x => x.id === a.dataset.id); if (r) confirmDel(r.title, 'All its versions go, and its planned blocks from today. Days you already saved keep it.', () => delRule(r.id)); },
   opacc: a => decideOp(+a.dataset.i, true),
   oprej: a => decideOp(+a.dataset.i, false),
   opall: async () => { for (let i = 0; i < INBOX.ops.length; i++) if (INBOX.ops[i].state === 'pending') await decideOp(i, true); },
