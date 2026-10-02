@@ -207,7 +207,11 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 .ck-c.cont.st-done{background:color-mix(in srgb,var(--k) 72%,var(--surface))}
 .ck-c.jt{border-top-left-radius:3px!important;border-top-right-radius:3px!important}
 .ck-c.jb{border-bottom-left-radius:3px!important;border-bottom-right-radius:3px!important}
-.ck-c.cut{clip-path:inset(0 var(--cr,0%) 0 var(--cl,0%) round 9px);padding-left:calc(var(--cl,0%) + 9px)!important;padding-right:calc(var(--cr,0%) + 9px)!important}
+/* a cell split side by side: blocks and free gaps by their real minutes */
+.ck-w{position:relative;min-width:0}
+.ck-w.span2{grid-column:span 2}
+.pt-g .ck-w{height:clamp(34px,calc((100vh - 400px) / 7),50px)}
+.ck-w > .ck-c.seg{position:absolute;top:0;bottom:0;height:auto!important;margin:0;left:calc(var(--l) * 1% + 1px);width:max(6px,calc(var(--w) * 1% - 3px));padding:0 7px!important}
 .ck-c.drag{cursor:grab}
 .ck-c.over{outline:2px dashed var(--accent);outline-offset:1px;background:var(--accent-soft)}
 .ck-c.lifting{box-shadow:0 8px 20px rgba(40,30,90,.25)}
@@ -249,7 +253,9 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 .fb-half{display:flex;gap:12px;min-width:0}
 .fb-half+.fb-half{border-left:1px solid var(--line);padding-left:14px}
 .fb-cap{flex:none;width:40px;min-height:112px;border-radius:20px;display:flex;flex-direction:column;align-items:center;gap:10px;padding:5px 0 14px;background:var(--accent-soft);color:color-mix(in srgb,var(--accent) 60%,var(--ink))}
-.fb-cap.sa{padding-top:14px;background:color-mix(in srgb,var(--good) 13%,var(--surface));color:color-mix(in srgb,var(--good) 70%,var(--ink))}
+.fb-cap.sa:not(:has(.fb-add)){padding-top:14px}
+.fb-cap .fb-add.sa{background:var(--good)}
+.fb-cap.sa{background:color-mix(in srgb,var(--good) 13%,var(--surface));color:color-mix(in srgb,var(--good) 70%,var(--ink))}
 .fb-cap .fb-add{width:30px;height:30px;box-shadow:none}
 .fb-cap .fb-add svg{width:16px;height:16px}
 .fb-vt{writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap}
@@ -565,7 +571,7 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 <div id="ov" hidden><div id="sheet" role="dialog" aria-modal="true"></div></div>
 <div id="toast" hidden></div>
 <div id="printArea"></div>
-<script src="core.js?v=45"></script>
-<script src="app.js?v=45"></script>
+<script src="core.js?v=47"></script>
+<script src="app.js?v=47"></script>
 </body>
 </html>

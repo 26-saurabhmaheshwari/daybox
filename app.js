@@ -400,6 +400,7 @@ function dismissed(date) { const o = load(LS_DISMISS) || {}; return o[date] || [
 
 const blockOf = (d, x) => x.placed ? d.blocks.find(b => b.id === x.placed) : null;
 let SUGS = [];
+const SUG_SEEN = new Set();  // ids already shown; + skips them for a fresh batch, cycles when all are seen
 const FIT_MAX = 5;  // your tasks + Saarthi suggestions, never more than 5 a day
 function fitFrom(d) { const s = CFG.settings, t = today(); return d.date === t ? Math.max(s.dayStart, Math.ceil(nowMin() / 15) * 15) : s.dayStart; }
 const durChip = m => Math.floor(m / 60) + ':' + pad(m % 60);
@@ -436,7 +437,10 @@ function fitHtml(d) {
   const slots = Math.max(0, FIT_MAX - todos.length);
   const opsShown = ops.slice(0, slots);
   const titles = new Set(todos.map(x => norm(x.title)));
-  SUGS = big && slots > opsShown.length ? X.suggest(CFG, STORE, TF, d.date, big, t, 8).filter(x => !hide.includes(x.item.id) && !titles.has(norm(x.item.title))).slice(0, slots - opsShown.length).map(x => Object.assign(x, { gap: big })) : [];
+  const pool = big && slots > opsShown.length ? X.suggest(CFG, STORE, TF, d.date, big, t, 8).filter(x => !hide.includes(x.item.id) && !titles.has(norm(x.item.title))) : [];
+  let fresh = pool.filter(x => !SUG_SEEN.has(x.item.id)); if (!fresh.length && pool.length) { SUG_SEEN.clear(); fresh = pool; }
+  SUGS = fresh.slice(0, slots - opsShown.length).map(x => Object.assign(x, { gap: big }));
+  const canMore = pool.length > SUGS.length;
   let sa = '';
   if (opsShown.length || SUGS.length) {
     sa += opsShown.map(({ o, i }) => { const isB = o.op.type === 'addBlock'; const c = catOf(CFG, isB ? o.op.block.cat : 'goal');
@@ -448,8 +452,10 @@ function fitHtml(d) {
       right: '<button type="button" class="tc-ok" data-act="sugacc" data-i="' + i + '" title="Accept" aria-label="Accept">' + ic('check') + '</button><button type="button" class="tc-x" data-act="sughide" data-id="' + esc(sg.item.id) + '" aria-label="Not today">×</button>' })).join('');
   }
   if (todos.some(x => !x.done && !blockOf(d, x)) || SUGS.length || opsShown.length) h += '<div class="fb-note">Drag a task onto the clock to give it a time.</div>';
-  const right = sa ? '<div class="fb-half"><div class="fb-cap sa"><span class="fb-vt b">Saarthi</span></div><div class="fb-list">' + sa + '</div></div>' : '';
-  return '<div class="fitbox' + (sa ? ' split' : '') + '"><div class="fb-half">' + h + '</div></div>' + right + '</div>';
+  // Saarthi keeps its half even when empty; + shows a fresh batch of ideas
+  const right = '<div class="fb-half"><div class="fb-cap sa">' + (canMore ? '<button type="button" class="fb-add sa" data-act="sugmore" title="New ideas" aria-label="New ideas">' + ic('plus') + '</button>' : '')
+    + '<span class="fb-vt b">Saarthi</span></div><div class="fb-list">' + sa + '</div></div>';
+  return '<div class="fitbox split"><div class="fb-half">' + h + '</div></div>' + right + '</div>';
 }
 function fitItem(key) {
   const d = AG_DAY; if (!d) return null;
@@ -520,32 +526,49 @@ function cellBlock(blocks, m) {
 function cellFactory(d, big, join) {
   const t = today(), nm = nowMin(), byMin = {}, seen = new Set();
   for (let m = 0; m < 1440; m += 30) { const b = cellBlock(d.blocks, m); byMin[m] = { b, first: !!b && !seen.has(b.id) }; if (b) seen.add(b.id); }
+  const gone = z => d.date < t || (d.date === t && z <= nm);
+  // the pieces of one cell window: blocks and free gaps of 5+ min, in time order
+  const segsOf = (m, S) => {
+    const out = []; let cur = m;
+    d.blocks.filter(b => b.status !== 'moved').map(b => ({ b, a: Math.max(b.start, m), z: Math.min(b.start + b.dur, m + S) }))
+      .filter(q => q.z - q.a >= Math.min(5, q.b.dur)).sort((q, r) => q.a - r.a)
+      .forEach(q => { if (q.a - cur >= 5) out.push({ a: cur, z: q.a }); out.push(q); cur = Math.max(cur, q.z); });
+    if (m + S - cur >= 5) out.push({ a: cur, z: m + S });
+    return out;
+  };
+  const blockHtml = (b, m, cls, sty, o) => {
+    const st = blkState(d, b, nm, t), c = catOf(CFG, b.cat);
+    const locked = isMarked(b) && !UNLOCKED.has(b.id);
+    const drag = big && !locked && !b.pillar && (st === 'up' || st === 'now' || st === 'mark');
+    let inner = '';
+    if (o.first) inner = (o.title ? '<span class="ck-t">' + esc(b.title) + '</span>' : '') + (o.time ? '<span class="ck-m">' + hm(b.start) + '</span>' : '');
+    else { cls += ' cont'; if (o.title) inner = '<span class="ck-t cont">' + esc(b.title) + '</span>'; }
+    if (o.tick && o.first && (st === 'done' || st === 'mark')) inner += '<i class="ck-i">' + (st === 'done' ? '✓' : '!') + '</i>';
+    return '<div class="' + cls + ' st-' + st + (o.first ? ' first' : '') + (drag ? ' drag' : '') + '" data-m="' + m + '" data-id="' + b.id + '" style="--k:' + c.color + (sty || '') + '"'
+      + (drag ? ' data-drag="blk:' + b.id + '" data-label="' + esc(b.title) + '"' : '') + ' title="' + esc(b.title) + ' ' + hm(b.start) + '–' + hm(b.start + b.dur) + '">' + inner + (o.nl || '') + '</div>';
+  };
   // span: 2 when one block fills both halves of the hour (cells merge into one wide bar)
   const cell = (m, pm, span) => {
     const x = byMin[m], b = x.b, S = 30 * (span || 1), isNow = d.date === t && nm >= m && nm < m + S;
     const nl = isNow ? '<b class="ck-nl" style="left:' + Math.round((nm - m) / S * 100) + '%"></b>' : '';
     let cls = 'ck-c' + (pm ? ' pm' : '') + (isNow ? ' now' : '') + (span === 2 ? ' span2' : '');
-    if (!b) return '<div class="' + cls + ' empty' + (d.date < t || (d.date === t && m + 30 <= nm) ? ' gone' : '') + '" data-m="' + m + '">' + nl + '</div>';
-    const st = blkState(d, b, nm, t), c = catOf(CFG, b.cat);
-    const locked = isMarked(b) && !UNLOCKED.has(b.id);
-    const drag = big && !locked && !b.pillar && (st === 'up' || st === 'now' || st === 'mark');
-    let inner = '', sty = '--k:' + c.color;
-    // a half-hour cell has no room for the time: it stays in the tooltip
-    if (x.first) inner = '<span class="ck-t">' + esc(b.title) + '</span>' + (big && span === 2 ? '<span class="ck-m">' + hm(b.start) + '</span>' : '');
-    else { cls += ' cont'; if (big) inner = '<span class="ck-t cont">' + esc(b.title) + '</span>'; }
-    if (big && x.first && (st === 'done' || st === 'mark')) inner += '<i class="ck-i">' + (st === 'done' ? '✓' : '!') + '</i>';
+    if (!b) return '<div class="' + cls + ' empty' + (gone(m + 30) ? ' gone' : '') + '" data-m="' + m + '">' + nl + '</div>';
+    // Today: a cell with two blocks, or a block plus a free gap, splits side by side; each gap is its own tap target
+    const segs = big ? segsOf(m, S) : null;
+    if (segs && !(segs.length === 1 && segs[0].b)) {
+      return '<div class="ck-w' + (pm ? ' pm' : '') + (span === 2 ? ' span2' : '') + '">' + segs.map(q => {
+        const w = (q.z - q.a) / S, sty = ';--l:' + Math.round((q.a - m) / S * 1000) / 10 + ';--w:' + Math.round(w * 1000) / 10;
+        if (!q.b) return '<div class="ck-c seg empty' + (gone(q.z) ? ' gone' : '') + (d.date === t && nm >= q.a && nm < q.z ? ' now' : '') + '" data-m="' + q.a + '" style="' + sty.slice(1) + '"></div>';
+        return blockHtml(q.b, q.a, 'ck-c seg', sty, { first: q.b.start >= m - 4, title: w >= .34, tick: w >= .45, time: span === 2 && w >= .6 });
+      }).join('') + nl + '</div>';
+    }
     if (join) {
       const same = k => k >= 0 && k < 1440 && Math.floor(k / 360) === Math.floor(m / 360) && byMin[k].b === b;
       if (same(m - 60) || (span === 2 && same(m - 30))) cls += ' jt';
       if (same(m + 60) || (span === 2 && same(m + 90))) cls += ' jb';
     }
-    // a block that starts or ends 5+ min inside the cell only fills its real part
-    if (big) {
-      const a = Math.max(b.start, m) - m, z = m + S - Math.min(b.start + b.dur, m + S);
-      if (a >= 5 || z >= 5) { cls += ' cut'; sty += ';--cl:' + (a >= 5 ? Math.round(a / S * 100) : 0) + '%;--cr:' + (z >= 5 ? Math.round(z / S * 100) : 0) + '%'; }
-    }
-    return '<div class="' + cls + ' st-' + st + (x.first ? ' first' : '') + (drag ? ' drag' : '') + '" data-m="' + m + '" data-id="' + b.id + '" style="' + sty + '"'
-      + (drag ? ' data-drag="blk:' + b.id + '" data-label="' + esc(b.title) + '"' : '') + ' title="' + esc(b.title) + ' ' + hm(b.start) + '–' + hm(b.start + b.dur) + '">' + inner + nl + '</div>';
+    // a half-hour cell has no room for the time: it stays in the tooltip
+    return blockHtml(b, m, cls, '', { first: big ? b.start >= m - 4 : x.first, title: big || x.first, tick: big, time: big && span === 2, nl });
   };
   const pair = (m0, pm) => { const b0 = byMin[m0].b; return b0 && b0 === byMin[m0 + 30].b ? cell(m0, pm, 2) : cell(m0, pm) + cell(m0 + 30, false); };
   return { byMin, cell, pair };
@@ -1206,6 +1229,7 @@ const ACTS = {
     try { await DBXFB.pushInbox(fsSafe(INBOX)); } catch (e) {}
     render(); toast('Added to To fit. Place it when you are ready.');
   },
+  sugmore: () => { SUGS.forEach(x => SUG_SEEN.add(x.item.id)); render(); },
   sughide: a => { const d = AG_DAY; if (!d) return; d.sugHide = (d.sugHide || []).concat(a.dataset.id); saveDay(d); render(); },
   tips: () => { TIPS_OPEN = !TIPS_OPEN; render(); },
   gotoday: () => { CUR = today(); SCROLL_NOW = true; render(); },
