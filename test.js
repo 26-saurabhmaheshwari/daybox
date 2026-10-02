@@ -281,6 +281,13 @@ t('picks lottery: fixed per week, no repeats across lines, cooldown, keeps lines
   const last = new Set(Object.values(a.weekPlans[ws]).map(v => v.itemId));
   ['big', 'little'].forEach(k => { const v = a.weekPlans[ws2][k]; if (v) assert(!last.has(v.itemId), k + ' repeats ' + v.text); });
 });
+t('routine ideas rotate one a day, every idea gets its turn', () => {
+  const m = X.seedConfig(); const r = m.rules.find(x => x.id === 'r_kids'); r.attach = ['20 min study']; r.rotate = ['A', 'B', 'C', 'D', 'E'];
+  const seen = []; let k = X.weekStart(TODAY);
+  for (let i = 0; i < 21; i++, k = X.addDays(k, 1)) { const b = X.buildDay(m, k).blocks.find(x => x.ruleId === 'r_kids'); if (b) { seen.push(b.idea); assert.strictEqual(b.attach[0].t, '20 min study'); assert.strictEqual(b.attach[1].t, b.idea); } }
+  ['A', 'B', 'C', 'D', 'E'].forEach(x => assert(seen.includes(x), x + ' never came'));
+  for (let i = 1; i < seen.length; i++) assert.notStrictEqual(seen[i], seen[i - 1], 'same idea two days running');
+});
 t('my-routine.json loads', () => {
   if (!fs.existsSync(__dirname + '/my-routine.json')) return;
   const o = JSON.parse(read('my-routine.json')); const m = X.mergeConfig(o.config);

@@ -339,6 +339,15 @@ function ruleClash(cfg, rule, ignoreId, today) {
   return cfg.rules.find(r => r.id !== ignoreId && r.id !== rule.id && ruleLive(r, today) && (r.days || []).some(d => (rule.days || []).includes(d)) && overlaps(r, rule)) || null;
 }
 
+/* a recurring block can rotate ideas (rule.rotate): one per day, in turn, so each gets its day */
+function ruleIdea(r, date) {
+  const list = (r.rotate || []).filter(Boolean);
+  if (!list.length) return null;
+  const n = (r.days || []).filter(d => d >= 0 && d < 7).length || 7;
+  // count only the weekdays it repeats on, so a 6-day rule still walks through every idea
+  const wk = Math.floor((parseKey(date) - parseKey('2024-01-01')) / (7 * 864e5)), pos = (r.days || []).slice().sort((a, b) => (a + 6) % 7 - (b + 6) % 7).indexOf(dow(date)); // Monday first, like the week
+  return list[(wk * n + Math.max(0, pos)) % list.length];
+}
 function buildDay(cfg, date) {
   const t = templateFor(cfg, date);
   const rules = activeRules(cfg, date);
@@ -350,7 +359,10 @@ function buildDay(cfg, date) {
     // a Thursday-planned little adventure / you-night replaces the routine one that day
     if (weekKinds.has('little') && /little adventure/i.test(r.title)) return;
     if (weekKinds.has('younight') && /you-?night/i.test(r.title)) return;
-    fixed.push(blockFrom(r, { src: 'rule', ruleId: r.id }));
+    const b = blockFrom(r, { src: 'rule', ruleId: r.id });
+    const idea = ruleIdea(r, date);
+    if (idea) { b.attach = b.attach.concat({ t: idea, done: false }); b.idea = idea; }
+    fixed.push(b);
   });
   week.forEach(w => fixed.push(blockFrom(w, Object.assign({ src: 'week', wk: w.wk }, w.itemId ? { itemId: w.itemId } : {}))));
   // template blocks make room for recurring + Thursday-plan blocks, so nothing overlaps
@@ -899,7 +911,7 @@ root.DBX = {
   pad, dkey, parseKey, addDays, dow, weekStart, hm, toMin, durTxt, hrs, clamp, clone, uid, DOW, norm, zoneOf,
   seedConfig, mergeConfig, migrateTemplates, catOf, liveCats, isSleep, isWaste, freeCats, addCat, deleteCat, catUse, SEED_CATS, SEED_TYPES, FIXED_TYPES, liveTypes, typeOf, addType, deleteType, SHUTDOWN, WEEK_SLOTS,
   overlaps, clashWith, carve, ruleClash, makeRoom, backupSlot,
-  activeRules, templateFor, attachObjs, blockFrom, weekItemsFor, pickPool, drawPick, autoPicks, buildDay, getDay, planSnapshot, lockIfDue, resetDay,
+  activeRules, templateFor, attachObjs, blockFrom, ruleIdea, weekItemsFor, pickPool, drawPick, autoPicks, buildDay, getDay, planSnapshot, lockIfDue, resetDay,
   editRule, endRule, deleteRule, ruleLive, lanes, live, intervals, unionMin, gaps,
   tfGoals, tfCatId, ensureTfCats, candidates, matches, lastDone, hoursDone, funMin, weekDays, itemCount, balanceState, suggest, backupOffers, useBackup, fillDay, placeBlock,
   missedYesterday, principleChecks, actualMin, dayStats, trackedDays, rangeReport, direction, streaks,
