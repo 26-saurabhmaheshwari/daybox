@@ -35,8 +35,7 @@ let TAB = { bank: 'regular', routine: 'templates', insights: '7' };
 let TPL_EDIT = null;
 let SCROLL_NOW = true;
 let DRAGGING = false;
-const LS_TMODE = 'dbx_todaymode_v1';
-let TMODE = localStorage.getItem(LS_TMODE) || 'agenda', TIPS_OPEN = false, EARLIER_OPEN = false, AG_DAY = null;
+let TIPS_OPEN = false, AG_DAY = null;
 const UNLOCKED = new Set();  // marked blocks unlocked for one edit; cleared when the editor closes or a drag ends
 const isMarked = b => !!b.status && b.status !== 'planned';
 
@@ -555,48 +554,6 @@ function nowBarHtml(d) {
 }
 function dismissed(date) { const o = load(LS_DISMISS) || {}; return o[date] || []; }
 function dayPpm() { return isPhone() ? 1.0 : 0.8; }
-function agendaRow(d, b) {
-  const c = catOf(CFG, b.cat), t = today(), nm = nowMin();
-  const ended = d.date < t || (d.date === t && b.start + b.dur <= nm);
-  const marked = isMarked(b), locked = marked && !UNLOCKED.has(b.id);
-  const isNow = d.date === t && b.start <= nm && b.start + b.dur > nm;
-  let right = '';
-  if (ended && !marked && b.cat !== 'sleep' && !d.virtual)
-    right = '<span class="qm">' + [['done', '✓', 'Done'], ['skipped', '✗', 'Skipped']].map(([s, l, n]) => '<button type="button" data-act="qmark" data-id="' + b.id + '" data-s="' + s + '" title="' + n + '" aria-label="' + n + '">' + l + '</button>').join('') + '</span>';
-  else if (marked)
-    right = '<span class="row" style="gap:4px;flex-wrap:nowrap"><span class="chip st ' + b.status + '">' + b.status + '</span>' + (locked ? '<button type="button" class="ag-lock" data-act="agunlock" data-id="' + b.id + '" title="Unlock to change" aria-label="Unlock to change">' + ic('lock') + '</button>' : '') + '</span>';
-  return '<div class="ag-row ' + (isNow ? 'is-now ' : '') + (locked ? 'locked ' : '') + 'st-' + (b.status || 'planned') + '" data-act="' + (locked ? 'noop' : 'agopen') + '" data-id="' + b.id + '" style="--c:' + c.color + '">'
-    + '<span class="ag-t mono">' + hm(b.start) + '</span><span class="ag-dot"></span>'
-    + '<div class="ag-main"><div class="ag-title">' + (b.mit ? '★ ' : '') + '<span>' + esc(b.title) + '</span>' + (b.pillar ? ic('lock', 's-ic') : '') + (isNow ? '<span class="chip now">now</span>' : '') + '</div>'
-    + '<div class="ag-meta">' + hm(b.start) + '–' + hm(b.start + b.dur) + ' · ' + durTxt(b.dur) + ' · ' + esc(c.name) + (b.pillar && b.backup != null && !b.strict ? ' · backup ' + hm(b.backup) : '') + '</div></div>' + right + '</div>';
-}
-function gapRow(g) {
-  return '<div class="ag-gap"><span class="mono">' + hm(g.start) + '</span><span class="dash"></span><span>Free ' + durTxt(g.end - g.start) + '</span></div>';
-}
-function agendaHtml(d) {
-  const t = today(), nm = nowMin(), s = CFG.settings, isToday = d.date === t, past = d.date < t;
-  const sorted = d.blocks.slice().sort((a, b) => a.start - b.start);
-  const earlier = isToday ? sorted.filter(b => b.start + b.dur <= nm) : past ? sorted : [];
-  const cur = isToday ? currentBlock(d, nm) : null;
-  const next = isToday ? sorted.filter(b => b.start + b.dur > nm && b !== cur && b.status !== 'moved') : past ? [] : sorted.filter(b => b.status !== 'moved');
-  let h = '';
-  if (earlier.length) {
-    const open = past || EARLIER_OPEN;
-    const unm = earlier.filter(b => !isMarked(b) && b.cat !== 'sleep').length;
-    h += '<div class="ag">' + (past ? '<div class="ag-h"><span>Blocks</span>' + (unm ? '<span class="chip warn">' + unm + ' to mark</span>' : '') + '</div>'
-      : '<button type="button" class="ag-h" data-act="earlier"><span>Earlier today (' + earlier.length + ')' + (unm ? ' · <b class="warn-t">' + unm + ' to mark</b>' : '') + '</span><span>' + (open ? '▾' : '▸') + '</span></button>')
-      + (open ? earlier.map(b => agendaRow(d, b)).join('') : '') + '</div>';
-  }
-  if (!past) {
-    const from = isToday ? Math.max(s.dayStart, Math.ceil(nm / 15) * 15) : s.dayStart;
-    const gs = X.gaps(d.blocks, from, s.bedtime, 30);
-    const items = next.map(b => ({ at: b.start, html: agendaRow(d, b) })).concat(gs.map(g => ({ at: g.start, html: gapRow(g) }))).sort((a, b) => a.at - b.at);
-    h += '<div class="ag"><div class="ag-h"><span>' + (isToday ? 'Next' : 'Plan') + '</span><span>' + next.length + ' blocks</span></div>'
-      + (items.length ? items.map(x => x.html).join('') : '<div class="empty" style="border:0">Nothing left today. Close the day and sleep on time.</div>') + '</div>';
-  }
-  h += '<div class="ag-add"><button type="button" class="btn sm" data-act="agadd">' + ic('plus') + 'Add block</button></div>';
-  return h;
-}
 const blockOf = (d, x) => x.placed ? d.blocks.find(b => b.id === x.placed) : null;
 let SUGS = [];
 const FIT_MAX = 5;  // your tasks + Saarthi suggestions, never more than 5 a day
@@ -657,8 +614,7 @@ function viewToday() {
   const pil = X.dayStats(CFG, d);
   const yday = DAYS[addDays(CUR, -1)];
   const ppm = dayPpm();
-  const actions = (phone ? '<div class="seg"><button class="' + (TMODE === 'agenda' ? 'on' : '') + '" data-act="tmode" data-m="agenda">Agenda</button><button class="' + (TMODE === 'timeline' ? 'on' : '') + '" data-act="tmode" data-m="timeline">Timeline</button></div>' : '')
-    + '<button class="iconbtn" data-act="prev" aria-label="Previous day">' + ic('left') + '</button><button class="iconbtn" data-act="next" aria-label="Next day">' + ic('right') + '</button>'
+  const actions = '<button class="iconbtn" data-act="prev" aria-label="Previous day">' + ic('left') + '</button><button class="iconbtn" data-act="next" aria-label="Next day">' + ic('right') + '</button>'
     + (isToday ? '' : '<button class="btn" data-act="gotoday">Today</button>')
     + '<button class="btn" data-act="print">' + ic('print') + (phone ? '' : 'Print') + '</button>'
     + (CUR <= t ? '<button class="btn pri" data-act="close">Close day</button>' : '');
@@ -691,9 +647,11 @@ function viewToday() {
   const grid = '<div class="gwrap daygrid" id="dayGrid">' + gridHtml([col], 'day', ppm) + '</div>';
   const hint = '<p class="hint" style="margin-top:8px">' + (phone ? 'Tap empty space to add. Press and hold a block, then drag. Drag the bottom edge to resize.' : 'Click or drag on empty space to add. Drag a block to move it, its bottom edge to resize.') + ' Marked blocks are locked: tap the corner lock to change one.</p>';
   let body;
-  if (phone) body = top + (TMODE === 'timeline' ? grid + hint : fitHtml(d) + agendaHtml(d));
-  else body = top + '<div class="tsplit"><div class="tleft">' + fitHtml(d) + agendaHtml(d) + '</div><div class="tright">' + grid + hint + '</div></div>';
-  const showGrid = !phone || TMODE === 'timeline';
+  // one calendar only: the To fit list sits beside (laptop) or above (phone) the timeline
+  const fit = fitHtml(d);
+  if (phone || !fit) body = top + fit + grid + hint;
+  else body = top + '<div class="tsplit"><div class="tleft">' + fit + '</div><div class="tright">' + grid + hint + '</div></div>';
+  const showGrid = true;
   return {
     title: isToday ? 'Today' : fmtShort(CUR), sub: fmtLong(CUR) + (d.tpl ? ' · ' + esc(d.tpl.name) : ''), actions, body,
     after() {
@@ -1206,14 +1164,7 @@ const ACTS = {
   fitdel: a => { const d = AG_DAY; if (!d) return; const before = clone(d); d.todo = (d.todo || []).filter(y => y.id !== a.dataset.id); saveDay(d); render(); toast('Removed from the list', 'Undo', () => { saveDay(before); render(); }); },
   sugacc: a => { const d = AG_DAY, sg = SUGS[+a.dataset.i]; if (!d || !sg) return; const before = clone(d); if ((d.todo || []).length >= FIT_MAX) return toast(FIT_MAX + ' is the limit for a day.'); const b = X.placeBlock(CFG, d, { title: sg.item.title, min: sg.min, cat: sg.item.cat, src: 'bank', itemId: sg.item.id }, sg.gap.start); if (!b) return toast('That slot is gone.'); d.todo = (d.todo || []).concat({ id: uid(), title: sg.item.title, min: sg.min, cat: sg.item.cat, done: false, by: 'saarthi', placed: b.id }); saveDay(d); render(); toast(sg.item.title + ' at ' + hm(b.start), 'Undo', () => { saveDay(before); render(); }); },
   sughide: a => { const d = AG_DAY; if (!d) return; d.sugHide = (d.sugHide || []).concat(a.dataset.id); saveDay(d); render(); },
-  tmode: a => { TMODE = a.dataset.m; localStorage.setItem(LS_TMODE, TMODE); SCROLL_NOW = true; render(); },
   tips: () => { TIPS_OPEN = !TIPS_OPEN; render(); },
-  earlier: () => { EARLIER_OPEN = !EARLIER_OPEN; render(); },
-  agopen: a => { const d = AG_DAY; const b = d && d.blocks.find(x => x.id === a.dataset.id); if (b) openBlock(d, b); },
-  agunlock: a => { UNLOCKED.add(a.dataset.id); render(); toast('Unlocked for one change. Tap the block to edit it.'); },
-  qmark: a => { const d = AG_DAY; const b = d && d.blocks.find(x => x.id === a.dataset.id); if (!b) return; const prev = b.status; b.status = a.dataset.s; saveDay(d); render(); toast(b.title + ': ' + b.status, 'Undo', () => { b.status = prev; saveDay(d); render(); }); },
-  aggap: a => openWhatNow(CUR, { start: +a.dataset.gs, end: +a.dataset.ge }),
-  agadd: () => { const d = AG_DAY || day(CUR), s = CFG.settings, t = today(); const from = CUR === t ? Math.max(s.dayStart, Math.ceil(nowMin() / 15) * 15) : s.dayStart; const g = X.gaps(d.blocks, from, s.dayEnd, 15)[0]; openBlock(d, null, { start: g ? g.start : from, dur: 30 }); },
   gotoday: () => { CUR = today(); SCROLL_NOW = true; render(); },
   wprev: () => { WEEK = addDays(WEEK, -7); render(); },
   wnext: () => { WEEK = addDays(WEEK, 7); render(); },

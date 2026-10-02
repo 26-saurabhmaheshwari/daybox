@@ -194,38 +194,16 @@ input[type=color]{width:38px;height:32px;border:1px solid var(--line);border-rad
 .sumline .chip b{color:var(--ink);font-family:var(--f-mono);font-weight:500}
 .chip.warn{background:var(--warn-bg);color:var(--warn);border-color:transparent}
 .chip.warn b{color:var(--warn)}
-.chip.now{background:var(--accent);color:var(--accent-ink);border-color:transparent;font-size:.66rem;padding:0 7px}
 .warn-t{color:var(--warn)}
 .ag{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-bottom:12px}
 .ag-h{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:9px 12px;font-size:.72rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);background:var(--surface2);border:0;border-bottom:1px solid var(--line2);text-align:left}
 button.ag-h{cursor:pointer}
-.ag-row{display:grid;grid-template-columns:42px 10px minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line2);cursor:pointer}
-.ag-row:last-child,.ag-gap:last-child{border-bottom:0}
-.ag-row:hover{background:var(--surface2)}
-.ag-row.locked{cursor:default}
-.ag-row.locked:hover{background:none}
-.ag-t{font-size:.78rem;color:var(--muted)}
 .ag-dot{width:10px;height:10px;border-radius:3px;background:var(--c)}
 .ag-title{font-weight:700;font-size:.92rem;display:flex;align-items:center;gap:5px;min-width:0}
 .ag-title span:first-of-type{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ag-meta{font-size:.74rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ag-row.st-done .ag-title,.ag-row.st-partial .ag-title{color:var(--muted)}
-.ag-row.st-skipped .ag-title span:first-of-type{text-decoration:line-through;color:var(--faint)}
-.ag-row.st-moved{opacity:.55}
-.ag-row.is-now{background:color-mix(in srgb,var(--c) 12%,var(--surface))}
-.ag-gap{display:flex;align-items:center;gap:10px;padding:6px 12px;border-bottom:1px solid var(--line2);font-size:.8rem;color:var(--faint)}
-.ag-gap .mono{width:42px;font-size:.78rem}
-.ag-gap .dash{flex:1;border-top:1px dashed var(--line)}
-.qm{display:inline-flex;gap:4px}
-.qm button{width:32px;height:30px;border:1px solid var(--line);background:var(--surface);border-radius:7px;font-weight:800;color:var(--muted)}
-.qm button:hover{border-color:var(--accent);color:var(--accent)}
-.chip.st{text-transform:capitalize}
-.chip.st.done{background:var(--good-bg);color:var(--good);border-color:transparent}
-.chip.st.partial{background:var(--warn-bg);color:var(--warn);border-color:transparent}
-.chip.st.skipped{background:var(--alert-bg);color:var(--alert);border-color:transparent}
 .ag-lock{border:0;background:none;padding:4px;color:var(--faint);display:inline-grid;place-items:center;cursor:pointer}
 .ag-lock svg{width:15px;height:15px}
-.ag-add{display:flex;justify-content:center;padding:2px 0 8px}
 .fit-row{display:grid;grid-template-columns:24px minmax(0,1fr) auto auto;gap:10px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--line2)}
 .fit-row.sug{grid-template-columns:10px minmax(0,1fr) auto auto}
 .fit-row.done .ag-title span{text-decoration:line-through;color:var(--faint)}
@@ -440,7 +418,7 @@ button.ag-h{cursor:pointer}
 <div id="ov" hidden><div id="sheet" role="dialog" aria-modal="true"></div></div>
 <div id="toast" hidden></div>
 <div id="printArea"></div>
-<script src="core.js?v=13"></script>
-<script src="app.js?v=13"></script>
+<script src="core.js?v=14"></script>
+<script src="app.js?v=14"></script>
 </body>
 </html>
