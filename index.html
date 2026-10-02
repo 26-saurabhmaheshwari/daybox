@@ -191,7 +191,7 @@ input[type=color]{width:38px;height:32px;border:1px solid var(--line);border-rad
 /* ---------- today: agenda + split ---------- */
 .tsplit{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,390px);gap:18px;align-items:start}
 .tsplit .tright{position:sticky;top:84px;max-height:calc(100vh - 96px);overflow:auto}
-.gwrap.daygrid{max-height:calc(100vh - 40px)}
+.gwrap.daygrid{max-height:calc(100vh - 40px);overflow-x:hidden}
 .sumline{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;margin:-2px 0 10px;font-size:.78rem;color:var(--muted);font-variant-numeric:tabular-nums}
 .linkbtn{border:0;background:none;padding:0;color:var(--accent);font-weight:700;font-size:inherit}
 .chip.warn{background:var(--warn-bg);color:var(--warn);border-color:transparent}
@@ -251,7 +251,7 @@ button.ag-h{cursor:pointer}
 .ev.pillar{cursor:pointer;box-shadow:inset 0 -2px 0 rgba(0,0,0,.12)}
 .ev.st-done{background:color-mix(in srgb,var(--c) 14%,var(--surface));color:color-mix(in srgb,var(--c) 45%,var(--muted));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--c) 22%,transparent)}
 .ev.st-done .sg-t{font-weight:600}
-.ev.needs{background:repeating-linear-gradient(135deg,var(--c) 0 7px,color-mix(in srgb,var(--c) 72%,#fff) 7px 14px)}
+.ev.needs{background:repeating-linear-gradient(135deg,var(--c) 0 8px,color-mix(in srgb,var(--c) 84%,#fff) 8px 16px)}
 .ev.is-now{box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--accent);z-index:2}
 .dg-legend{position:absolute;right:10px;top:5px;display:flex;gap:12px;font-size:.64rem;color:var(--faint);font-weight:600}
 .dg-legend span{display:inline-flex;align-items:center;gap:5px}
@@ -531,7 +531,7 @@ button.ag-h{cursor:pointer}
 <div id="ov" hidden><div id="sheet" role="dialog" aria-modal="true"></div></div>
 <div id="toast" hidden></div>
 <div id="printArea"></div>
-<script src="core.js?v=24"></script>
-<script src="app.js?v=24"></script>
+<script src="core.js?v=25"></script>
+<script src="app.js?v=25"></script>
 </body>
 </html>
