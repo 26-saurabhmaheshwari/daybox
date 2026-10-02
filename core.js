@@ -606,8 +606,11 @@ function rangeReport(cfg, store, from, to) {
   const balance = free.map(c => ({ cat: c, min: actual[c] || 0, share: freeUsed ? (actual[c] || 0) / freeUsed : 0, target: (+tgt[c] || 0) / tsum }));
   const funDone = cfg.items.filter(i => !i.deleted && (i.kind === 'dream' || i.kind === 'fun'))
     .map(i => ({ title: i.title, cat: i.cat, min: days.reduce((a, d) => a + d.blocks.filter(b => matches(b, i)).reduce((x, b) => x + actualMin(b), 0), 0) })).filter(x => x.min).sort((a, b) => b.min - a.min);
+  // hours per type (Office, Goals, ...): each category's minutes go to its current type
+  const byType = {};
+  [['planned', planned], ['actual', actual]].forEach(([k, o]) => Object.entries(o).forEach(([c, m]) => { const t = catOf(cfg, c).type || 'office'; (byType[t] = byType[t] || { planned: 0, actual: 0 })[k] += m; }));
   const n = stats.length || 1;
-  return { from, to, days: stats, tracked: stats.length, actual, planned, keptPct: keepable ? kept / keepable : null,
+  return { from, to, days: stats, byType, tracked: stats.length, actual, planned, keptPct: keepable ? kept / keepable : null,
     pillarPct: pP ? pK / pP : null, wastePerDay: Object.entries(actual).reduce((a, [c, m]) => a + (isWaste(cfg, c) ? m : 0), 0) / n, freeUsedPerDay: freeUsed / n, missByHour, balance, funDone,
     closedDays: stats.filter(s => s.closed).length };
 }

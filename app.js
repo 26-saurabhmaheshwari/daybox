@@ -1044,6 +1044,11 @@ function viewInsights() {
       + '<div class="bars">' + buckets.map(b => '<div class="col" title="' + esc(b.label) + ': ' + durTxt(Object.values(b.a).reduce((x, y) => x + y, 0)) + '">' + cats.map(c => b.a[c.id] ? '<i style="--c:' + c.color + ';height:' + (b.a[c.id] / max * 100) + '%"></i>' : '').join('') + '</div>').join('') + '</div>'
       + '<div class="bars-x">' + buckets.map(b => '<span>' + esc(b.label) + '</span>').join('') + '</div><p class="hint" style="margin:8px 0 0">Done blocks count. Tallest bar = ' + durTxt(max) + '.</p></div>';
     const n = rep.tracked;
+    const doneAll = Object.values(rep.byType).reduce((a, x) => a + x.actual, 0) || 1;
+    const tRows = X.liveTypes(CFG).concat((CFG.types || []).filter(x => x.deleted)).filter(x => rep.byType[x.id]);
+    body += '<div class="card" style="margin-top:14px"><h3>By type</h3><div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Type</th><th>Planned</th><th>Done</th><th>Per day</th><th>Share of done</th></tr></thead><tbody>'
+      + tRows.map(x => { const v = rep.byType[x.id]; return '<tr><td style="text-align:left"><b>' + esc(x.name) + '</b></td><td>' + hrs(v.planned) + 'h</td><td>' + hrs(v.actual) + 'h</td><td>' + durTxt(v.actual / n) + '</td><td>' + Math.round(v.actual / doneAll * 100) + '%</td></tr>'; }).join('')
+      + '</tbody></table></div><p class="hint" style="margin:8px 0 0">A category counts under the type it has now.</p></div>';
     body += '<div class="cols2" style="margin-top:14px"><div class="card"><h3>By category</h3><div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Category</th><th>Planned</th><th>Done</th><th>Per day</th></tr></thead><tbody>'
       + CFG.cats.filter(c => rep.planned[c.id] || rep.actual[c.id]).map(c => '<tr><td><span class="chip" style="--c:' + c.color + '"><i></i>' + esc(c.name) + '</span></td><td>' + hrs(rep.planned[c.id] || 0) + 'h</td><td>' + hrs(rep.actual[c.id] || 0) + 'h</td><td>' + durTxt((rep.actual[c.id] || 0) / n) + '</td></tr>').join('')
       + '</tbody></table></div><p class="hint" style="margin:8px 0 0">' + n + ' tracked days · plan kept ' + fmtVal(rep.keptPct, 'pct') + ' · pillars kept ' + fmtVal(rep.pillarPct, 'pct') + ' · closed ' + rep.closedDays + ' days</p></div>'

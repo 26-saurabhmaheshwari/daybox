@@ -231,6 +231,12 @@ t('types: seeded, old groups migrate, add/delete moves categories, office + slee
   m.types.find(x => x.id === 'goal').deleted = true; const g = X.mergeConfig(JSON.parse(JSON.stringify(m)));
   assert.strictEqual(X.catOf(g, 'goal').type, 'nongoal'); // category of a deleted type falls back
 });
+t('report: hours per type', () => {
+  const m = X.seedConfig(); const k = X.addDays(TODAY, -1);
+  const st = { days: { [k]: { date: k, blocks: [{ id: 'a', start: 600, dur: 60, title: 'Work', cat: 'office', status: 'done' }, { id: 'b', start: 700, dur: 30, title: 'Admin', cat: 'admin', status: 'done' }, { id: 'c', start: 800, dur: 60, title: 'Guitar', cat: 'hobby', status: 'skipped' }] } } };
+  const r = X.rangeReport(m, st, k, k);
+  assert.strictEqual(r.byType.office.actual, 90); assert.strictEqual(r.byType.nongoal.planned, 60); assert.strictEqual(r.byType.nongoal.actual, 0);
+});
 t('my-routine.json loads', () => {
   if (!fs.existsSync(__dirname + '/my-routine.json')) return;
   const o = JSON.parse(read('my-routine.json')); const m = X.mergeConfig(o.config);

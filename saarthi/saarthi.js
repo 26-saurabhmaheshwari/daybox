@@ -69,10 +69,10 @@ async function loadAll(uid) {
 
 const blk = (cfg, b) => X.hm(b.start) + '-' + X.hm(b.start + b.dur) + ' ' + b.title + ' [' + X.catOf(cfg, b.cat).name + ']' + (b.pillar ? ' PILLAR' : '') + (b.mit ? ' MIT' : '') + (b.status && b.status !== 'planned' ? ' -> ' + b.status : '') + (b.unplanned ? ' (unplanned)' : '') + (b.note ? ' note: ' + b.note : '');
 const pct = v => v == null ? null : Math.round(v * 100) + '%';
-function brief(r) {
+function brief(r, cfg) {
   const h = {}; Object.entries(r.actual).forEach(([k, v]) => { h[k] = X.hrs(v); });
   return { from: r.from, to: r.to, trackedDays: r.tracked, doneHoursByCat: h, planKept: pct(r.keptPct), pillarsKept: pct(r.pillarPct), wasterPerDay: X.durTxt(r.wastePerDay), freeTimeUsedPerDay: X.durTxt(r.freeUsedPerDay), closedDays: r.closedDays,
-    skippedByHour: r.missByHour.map((n, i) => n ? X.pad(i) + ':00=' + n : null).filter(Boolean), balance: r.balance.map(b => b.cat + ' ' + pct(b.share) + ' (target ' + pct(b.target) + ')'), nonGoalsDone: r.funDone.map(x => x.title + ' ' + X.durTxt(x.min)) };
+    skippedByHour: r.missByHour.map((n, i) => n ? X.pad(i) + ':00=' + n : null).filter(Boolean), balance: r.balance.map(b => b.cat + ' ' + pct(b.share) + ' (target ' + pct(b.target) + ')'), nonGoalsDone: r.funDone.map(x => x.title + ' ' + X.durTxt(x.min)), byType: Object.entries(r.byType).map(([t, v]) => X.typeOf(cfg, t).name + ' done ' + X.durTxt(v.actual) + ' of ' + X.durTxt(v.planned) + ' planned') };
 }
 
 async function pull(nDays) { console.log(JSON.stringify(await buildPull(nDays), null, 1)); }
@@ -99,8 +99,8 @@ async function buildPull(nDays) {
     nonGoals: cfg.items.filter(i => !i.deleted && (i.kind === 'dream' || i.kind === 'fun')).map(i => { const ago = X.lastDone(S, i, t); return i.title + ' [' + (i.kind === 'dream' ? 'dream' : i.cat) + (i.kind === 'dream' ? ', ' + i.min + 'm' : '') + (i.needs ? ', needs ' + i.needs : '') + ', ' + X.durTxt(X.hoursDone(S, i)) + ' done' + (ago == null ? '' : ', last ' + ago + 'd ago') + ']'; }),
     boredomList: cfg.boredom,
     thisWeekBalance: X.balanceState(cfg, week).rows.map(r => r.cat + ' ' + pct(r.share) + ' (target ' + pct(r.target) + ')'),
-    report7: brief(X.rangeReport(cfg, S, X.addDays(t, -6), t)),
-    report28: brief(X.rangeReport(cfg, S, X.addDays(t, -27), t)),
+    report7: brief(X.rangeReport(cfg, S, X.addDays(t, -6), t), cfg),
+    report28: brief(X.rangeReport(cfg, S, X.addDays(t, -27), t), cfg),
     direction: X.direction(cfg, S, t).map(m => m.label + ': ' + (m.fmt === 'pct' ? pct(m.now) : m.now == null ? '-' : X.durTxt(m.now)) + ' vs ' + (m.fmt === 'pct' ? pct(m.before) : m.before == null ? '-' : X.durTxt(m.before)) + (m.enough ? '' : ' (not enough data)')),
     pillarStreaks: X.streaks(cfg, S, t).map(s => s.title + ' ' + s.days + ' days'),
     sanyam: A.tf ? X.sanyamAnalysis(cfg, S, A.tf, t).map(a => ({ habit: a.habit.name, slips: a.slips, recent: a.recent, slipDaysTracked: a.slipDays, cleanDaysTracked: a.cleanDays, findings: a.findings, fixes: a.fixes, notes: a.notes })) : 'no Tenfold data',
