@@ -180,23 +180,16 @@ t('old seed colours move to the new palette, custom ones stay', () => {
   const m = X.mergeConfig({ cats: [{ id: 'goal', name: 'Goal', color: '#6C4FD0', group: 'free' }, { id: 'office', name: 'Office', color: '#123456', group: 'fixed' }] });
   assert.strictEqual(m.cats.find(c => c.id === 'goal').color, '#7B5CFA'); assert.strictEqual(m.cats.find(c => c.id === 'office').color, '#123456');
 });
-t('categories: add, soft delete moves rules + items, old self type becomes free time', () => {
-  const m = X.mergeConfig({ cats: [{ id: 'self', name: 'Self', color: '#E54C9A', group: 'self' }, { id: 'odd', name: 'Odd', color: '#111111', group: 'zzz' }] });
-  assert.strictEqual(m.cats.find(c => c.id === 'self').group, 'free'); assert.strictEqual(m.cats.find(c => c.id === 'odd').group, 'fixed');
-  const c = X.addCat(m, ' Music ', 'free'); assert.strictEqual(c.name, 'Music'); assert(X.freeCats(m).includes(c.id));
+t('categories: add, soft delete moves rules + items, free time = has a balance share', () => {
+  const m = X.seedConfig();
+  const c = X.addCat(m, ' Music '); assert.strictEqual(c.name, 'Music'); assert(!X.freeCats(m).includes(c.id));
+  m.settings.balance[c.id] = 10; assert(X.freeCats(m).includes(c.id)); assert(!X.freeCats(m).includes('office'));
   m.settings.balance.hobby = 20;
   const moved = X.deleteCat(m, 'hobby', c.id);
   assert(moved && moved.items >= 1); assert(!m.items.some(i => i.cat === 'hobby')); assert(!('hobby' in m.settings.balance));
   assert(!X.liveCats(m).some(x => x.id === 'hobby')); assert.strictEqual(X.catOf(m, 'hobby').name, 'Hobby'); // past days still resolve
-  assert(!X.freeCats(m).includes('hobby'));
   assert.strictEqual(X.deleteCat(m, 'leisure', 'hobby'), false); // cannot move into a deleted one
   const again = X.mergeConfig(JSON.parse(JSON.stringify(m))); assert(again.cats.find(x => x.id === 'hobby').deleted); // seed does not come back
-});
-t('sleep and waste follow the category type, not the id', () => {
-  const m = X.seedConfig(); const c = X.addCat(m, 'Nap', 'sleep'); const w = X.addCat(m, 'Reels', 'waste');
-  assert(X.isSleep(m, c.id)); assert(!X.isSleep(m, 'office'));
-  const st = X.dayStats(m, { date: '2026-10-01', blocks: [{ id: 'a', start: 600, dur: 30, title: 'Reels', cat: w.id, status: 'done' }, { id: 'b', start: 900, dur: 30, title: 'Nap', cat: c.id, status: 'planned' }] });
-  assert.strictEqual(st.waste, 30); assert.strictEqual(st.keepable, 30);
 });
 t('my-routine.json loads', () => {
   if (!fs.existsSync(__dirname + '/my-routine.json')) return;

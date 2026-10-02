@@ -886,9 +886,9 @@ function viewBank() {
     else if (!gs.length) body += '<div class="empty">No open Live, Quarter or Yearly goals in Tenfold.</div>';
     else body += '<div class="card"><table class="tbl" id="tfTbl"><thead><tr><th>Goal</th><th>Use</th><th>Category</th><th>Minutes</th><th>Per week</th></tr></thead><tbody>' + gs.map(g => '<tr data-id="' + esc(g.id) + '"><td style="text-align:left"><b>' + esc(g.name) + '</b><div class="muted small">' + esc(g.secLabel) + ' · ' + esc(g.tfCat || '') + (g.target ? ' · ' + (g.cur || 0) + '/' + g.target + ' ' + esc(g.unit || '') : '') + '</div></td><td><input type="checkbox" data-f="on"' + (g.on ? ' checked' : '') + '></td><td><select data-f="cat">' + catOptions(g.cat) + '</select></td><td><input type="number" min="10" step="5" data-f="min" value="' + g.min + '" style="width:76px"></td><td><input type="number" min="1" max="14" data-f="perWeek" value="' + g.perWeek + '" style="width:64px"></td></tr>').join('') + '</tbody></table></div>';
   } else if (tab === 'balance') {
-    const free = X.liveCats(CFG).filter(c => c.group === 'free'), b = CFG.settings.balance;
+    const free = X.liveCats(CFG).filter(c => !X.isSleep(CFG, c.id) && !X.isWaste(CFG, c.id)), b = CFG.settings.balance;
     const sum = free.reduce((a, c) => a + (+b[c.id] || 0), 0);
-    body += '<p class="hint">How you want your free time split. Default: goals = fun (hobby + leisure), then family and health. Suggestions push whatever is behind.</p>'
+    body += '<p class="hint">How you want your free time split. A category at 0% stays out of the mix. Suggestions push whatever is behind.</p>'
       + '<div class="cols2"><div class="card"><h3>Your mix</h3>' + free.map(c => '<div class="hbar" style="--c:' + c.color + '"><span>' + esc(c.name) + '</span><input type="range" min="0" max="60" step="5" data-bal="' + c.id + '" value="' + (+b[c.id] || 0) + '"><span class="mono small" id="bv_' + c.id + '">' + (+b[c.id] || 0) + '%</span></div>').join('')
       + '<p class="hint" id="balSum" style="margin:8px 0 0">Total ' + sum + '% (it is scaled to 100%).</p></div>' + balanceBars(X.balanceState(CFG, days).rows, 'This week so far') + '</div>';
   } else {
@@ -1097,11 +1097,10 @@ async function decideOp(i, accept) {
 
 /* ---------- settings ---------- */
 let CAT_DEL = null; // category waiting for delete confirm
-function typeOptions(sel) { return X.CAT_TYPES.map(t => '<option value="' + t.id + '"' + (t.id === sel ? ' selected' : '') + '>' + t.name + '</option>').join(''); }
 function catCard() {
   const cats = X.liveCats(CFG);
   const row = c => {
-    let h = '<div class="li cat" data-cat="' + c.id + '"><input type="color" value="' + c.color + '" data-f="color" aria-label="Colour"><input type="text" value="' + esc(c.name) + '" data-f="name" aria-label="Name"><select data-f="group" aria-label="Type">' + typeOptions(c.group) + '</select>'
+    let h = '<div class="li cat" data-cat="' + c.id + '"><input type="color" value="' + c.color + '" data-f="color" aria-label="Colour"><input type="text" value="' + esc(c.name) + '" data-f="name" aria-label="Name">'
       + (cats.length > 1 ? '<button type="button" class="btn ghost sm" data-catdel="' + c.id + '" aria-label="Delete ' + esc(c.name) + '" title="Delete">×</button>' : '<span></span>') + '</div>';
     if (CAT_DEL !== c.id) return h;
     const u = X.catUse(CFG, c.id), used = u.rules + u.items;
@@ -1111,8 +1110,8 @@ function catCard() {
       + '<button type="button" class="btn sm danger" id="catYes">Delete</button><button type="button" class="btn sm" id="catNo">Cancel</button></div>';
   };
   return '<div class="card"><h3>Categories</h3><div class="list">' + cats.map(row).join('') + '</div>'
-    + '<div class="li cat add"><span></span><input type="text" id="catNew" placeholder="New category" maxlength="24"><select id="catNewG" aria-label="Type">' + typeOptions('free') + '</select><button type="button" class="btn sm pri" id="catAdd">Add</button></div>'
-    + '<dl class="types">' + X.CAT_TYPES.map(t => '<dt>' + t.name + '</dt><dd>' + t.hint + '</dd>').join('') + '</dl></div>';
+    + '<div class="li cat add"><span></span><input type="text" id="catNew" placeholder="New category" maxlength="24"><button type="button" class="btn sm pri" id="catAdd">Add</button></div>'
+    + '<p class="hint" style="margin:10px 0 0">Which ones count as free time: set their share in Library, Balance.</p></div>';
 }
 function viewSettings() {
   const s = CFG.settings;
@@ -1142,11 +1141,11 @@ function viewSettings() {
           saveCfg(); render();
         };
       });
-      $$('[data-cat]').forEach(li => { li.onchange = e => { const f = e.target.dataset.f; if (!f) return; const c = CFG.cats.find(x => x.id === li.dataset.cat); c[f] = f === 'name' ? (e.target.value.trim() || c.name) : e.target.value; saveCfg(); if (f === 'group') render(); }; });
+      $$('[data-cat]').forEach(li => { li.onchange = e => { const f = e.target.dataset.f; if (!f) return; const c = CFG.cats.find(x => x.id === li.dataset.cat); c[f] = f === 'name' ? (e.target.value.trim() || c.name) : e.target.value; saveCfg(); }; });
       $$('[data-catdel]').forEach(b => { b.onclick = () => { CAT_DEL = b.dataset.catdel; render(); }; });
       if ($('#catNo')) $('#catNo').onclick = () => { CAT_DEL = null; render(); };
       if ($('#catYes')) $('#catYes').onclick = () => { const to = $('#catTo') ? $('#catTo').value : null; if (X.deleteCat(CFG, CAT_DEL, to)) { CAT_DEL = null; saveCfg(); render(); } };
-      $('#catAdd').onclick = () => { const n = $('#catNew').value.trim(); if (!n) { $('#catNew').focus(); return; } X.addCat(CFG, n, $('#catNewG').value); saveCfg(); render(); };
+      $('#catAdd').onclick = () => { const n = $('#catNew').value.trim(); if (!n) { $('#catNew').focus(); return; } X.addCat(CFG, n); saveCfg(); render(); };
       $('#catNew').onkeydown = e => { if (e.key === 'Enter') $('#catAdd').click(); };
       $('#impFile').onchange = e => { const f = e.target.files[0]; if (f) importFile(f); e.target.value = ''; };
     },

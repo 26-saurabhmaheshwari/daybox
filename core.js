@@ -31,19 +31,12 @@ const SEED_CATS = [
   { id: 'hobby',   name: 'Hobby',   color: '#E6A100', group: 'free' },   // amber: joy
   { id: 'leisure', name: 'Leisure', color: '#09A6C9', group: 'free' },   // cyan: calm
   { id: 'health',  name: 'Health',  color: '#1FAE5B', group: 'free' },   // green: nature
-  { id: 'self',    name: 'Self',    color: '#E54C9A', group: 'free' },   // pink: care
+  { id: 'self',    name: 'Self',    color: '#E54C9A', group: 'self' },   // pink: care
   { id: 'sleep',   name: 'Sleep',   color: '#4C5774', group: 'sleep' },  // slate
   { id: 'waster',  name: 'Waster',  color: '#EF4444', group: 'waste' },  // red: warning
 ];
 // colours the first version shipped with; a category still on one of these gets the new palette
 const OLD_SEED_COLORS = { pillar: ['#E08A1E', '#B4235A'], office: ['#3D6B99', '#3B7BE8'], admin: ['#7F8791', '#6B7A8F'], family: ['#2F9A62', '#F08A24', '#EA7317'], goal: ['#6C4FD0', '#7C5CFA'], hobby: ['#D4497A', '#E3A008', '#D99100'], leisure: ['#1C9DB0', '#0EA5C6', '#0B9CC0'], health: ['#8AA12A', '#22A55B'], self: ['#A0629E', '#E0559B'], sleep: ['#4B5876', '#55627A'], waster: ['#C7372F', '#E5484D'] };
-/* category types: each one changes how DayBox treats the time */
-const CAT_TYPES = [
-  { id: 'fixed', name: 'Must do',     hint: 'Work, chores, commitments. Kept out of your free-time mix.' },
-  { id: 'free',  name: 'Free time',   hint: 'Counts in your balance mix. What now? and Fill free time pick these.' },
-  { id: 'sleep', name: 'Sleep',       hint: 'Never asks to be marked, no end bell, not counted as booked time.' },
-  { id: 'waste', name: 'Time waster', hint: 'Counted as waste in Reports. Warned if it sits before 19:00.' },
-];
 const SHUTDOWN = ["Tomorrow's MIT written", 'Laptop closed', 'Phone on alerts only'];
 const T = (start, dur, title, cat, x) => Object.assign({ id: uid(), start, dur, title, cat, attach: [] }, x || {});
 function seedConfig() {
@@ -112,7 +105,6 @@ function mergeConfig(saved) {
   out.cats = (out.cats || []).slice();
   s.cats.forEach(c => { if (!ids.has(c.id)) out.cats.push(c); });
   out.cats = out.cats.map(c => (OLD_SEED_COLORS[c.id] || []).includes(String(c.color).toUpperCase()) ? Object.assign({}, c, { color: s.cats.find(x => x.id === c.id).color }) : c);
-  out.cats = out.cats.map(c => CAT_TYPES.some(t => t.id === c.group) ? c : Object.assign({}, c, { group: c.group === 'self' ? 'free' : 'fixed' })); // old 'self' type did nothing
   ['templates', 'rules', 'items', 'boredom'].forEach(k => { if (!Array.isArray(out[k])) out[k] = s[k]; });
   migrateTemplates(out);
   return out;
@@ -146,13 +138,14 @@ function migrateTemplates(cfg) {
 
 const catOf = (cfg, id) => cfg.cats.find(c => c.id === id) || { id, name: id || '?', color: '#888', group: 'fixed' };
 const liveCats = cfg => cfg.cats.filter(c => !c.deleted);
-const isSleep = (cfg, id) => catOf(cfg, id).group === 'sleep';
-const isWaste = (cfg, id) => catOf(cfg, id).group === 'waste';
-const freeCats = cfg => liveCats(cfg).filter(c => c.group === 'free').map(c => c.id);
+const isSleep = (cfg, id) => id === 'sleep';
+const isWaste = (cfg, id) => id === 'waster';
+// your free-time mix: every category you gave a balance share
+const freeCats = cfg => liveCats(cfg).filter(c => +((cfg.settings.balance || {})[c.id]) > 0).map(c => c.id);
 const CAT_COLORS = ['#2F7BF5', '#F07A1A', '#7B5CFA', '#E6A100', '#09A6C9', '#1FAE5B', '#E54C9A', '#C2185B', '#6E7A91'];
-function addCat(cfg, name, group) {
+function addCat(cfg, name) {
   const used = new Set(liveCats(cfg).map(c => String(c.color).toUpperCase()));
-  const c = { id: 'c_' + uid(), name: String(name || 'New category').trim() || 'New category', color: CAT_COLORS.find(x => !used.has(x)) || '#888888', group: group || 'free' };
+  const c = { id: 'c_' + uid(), name: String(name || 'New category').trim() || 'New category', color: CAT_COLORS.find(x => !used.has(x)) || '#888888' };
   cfg.cats.push(c);
   return c;
 }
@@ -725,7 +718,7 @@ function applyOp(cfg, store, op, today) {
 
 root.DBX = {
   pad, dkey, parseKey, addDays, dow, weekStart, hm, toMin, durTxt, hrs, clamp, clone, uid, DOW, norm, zoneOf,
-  seedConfig, mergeConfig, migrateTemplates, catOf, liveCats, isSleep, isWaste, freeCats, addCat, deleteCat, catUse, CAT_TYPES, SEED_CATS, SHUTDOWN, WEEK_SLOTS,
+  seedConfig, mergeConfig, migrateTemplates, catOf, liveCats, isSleep, isWaste, freeCats, addCat, deleteCat, catUse, SEED_CATS, SHUTDOWN, WEEK_SLOTS,
   overlaps, clashWith, carve, ruleClash, makeRoom, backupSlot,
   activeRules, templateFor, attachObjs, blockFrom, weekItemsFor, buildDay, getDay, planSnapshot, lockIfDue, resetDay,
   editRule, endRule, ruleLive, lanes, live, intervals, unionMin, gaps,
