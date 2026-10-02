@@ -611,19 +611,6 @@ function bindDrag() {
     const d = RENDERED[date]; if (d) tapCell(d, el);
   };
 }
-function nowBarHtml(d, stats) {
-  const nm = nowMin(), s = CFG.settings;
-  const cur = currentBlock(d, nm);
-  const next = d.blocks.filter(X.live).filter(b => b.start > nm).sort((a, b) => a.start - b.start)[0];
-  let label = 'NOW', title, from, to, left;
-  if (nm >= s.bedtime) { title = 'Past your bedtime'; from = s.bedtime; to = s.dayEnd; left = 'lights out'; }
-  else if (cur) { title = esc(cur.title); from = cur.start; to = cur.start + cur.dur; left = durTxt(to - nm) + ' left'; }
-  else { label = 'FREE NOW'; title = next ? 'Until ' + esc(next.title) : 'Until bedtime'; from = nm; to = next ? next.start : s.bedtime; left = durTxt(to - nm); }
-  const pct = clamp(Math.round((nm - from) / Math.max(1, to - from) * 100), 0, 100);
-  return '<div class="nowcard" id="nowbar"><div class="nc-main"><div class="nc-l">' + label + '</div><div class="nc-t">' + title + '</div></div>'
-    + '<div class="nc-bar"><div class="nc-track"><i style="width:' + (cur ? pct : 0) + '%"></i></div><div class="nc-times"><span>' + hm(from) + '</span><span>' + left + '</span><span>' + hm(to) + '</span></div></div>'
-    + '<div class="nc-stats">' + (stats || '') + '</div><button class="nc-btn" data-act="bored">Bored?</button></div>';
-}
 function openAddTask() {
   const d = AG_DAY; if (!d) return;
   if ((d.todo || []).length >= FIT_MAX) return toast(FIT_MAX + ' is the limit for a day. Tick one done or remove one.');
@@ -656,16 +643,30 @@ function viewToday() {
   // one date with arrows, and a green bar of the same width: blocks done out of the day's blocks
   const pd = d.blocks.filter(b => b.cat !== 'sleep' && b.status !== 'moved'), pDone = pd.filter(b => b.status === 'done').length;
   const dd0 = X.parseKey(CUR), dateTxt = DOWL[dd0.getDay()] + ', ' + dd0.getDate() + ' ' + MON[dd0.getMonth()];
+  let barPct, barTxt, barEnd;
+  if (isToday) {
+    const live = d.blocks.filter(X.live), cur = currentBlock(d, nm);
+    const next = live.filter(b => b.start > nm).sort((a, b) => a.start - b.start)[0];
+    if (nm >= s.bedtime) { barPct = 100; barTxt = 'Past bedtime · lights out'; }
+    else if (cur) { barPct = Math.round((nm - cur.start) / cur.dur * 100); barTxt = esc(cur.title) + ' · ' + durTxt(cur.start + cur.dur - nm) + ' left'; }
+    else {
+      const prevEnd = live.filter(b => b.start + b.dur <= nm).reduce((m, b) => Math.max(m, b.start + b.dur), s.dayStart);
+      const until = next ? next.start : s.bedtime;
+      barPct = Math.round((nm - prevEnd) / Math.max(1, until - prevEnd) * 100);
+      barTxt = 'Free · ' + durTxt(until - nm) + ' until ' + (next ? esc(next.title) : 'bedtime');
+    }
+    barEnd = sc.past ? sc.marked + '/' + sc.past + ' marked' : '';
+  } else { barPct = pd.length ? Math.round(pDone / pd.length * 100) : 0; barTxt = pDone + '/' + pd.length + ' done'; barEnd = ''; }
   const dnav = '<span class="dnav"><span class="dn-row"><button type="button" class="dn-a" data-act="prev" aria-label="Previous day">' + ic('left') + '</button>'
     + '<button type="button" class="dn-mid" data-act="gotoday" title="' + (isToday ? 'Today' : 'Back to today') + '">' + (isToday ? 'Today · ' : '') + dateTxt + '</button>'
     + '<button type="button" class="dn-a" data-act="next" aria-label="Next day">' + ic('right') + '</button></span>'
-    + '<span class="dn-prog"><span class="dn-bar"><i style="width:' + (pd.length ? Math.round(pDone / pd.length * 100) : 0) + '%"></i></span><span class="dn-pt">' + pDone + '/' + pd.length + ' done</span></span></span>';
-  const actions = '<button class="btn" data-act="print" aria-label="Print" title="Print">' + ic('print') + '</button>'
+    + '<span class="dn-bar"><i style="width:' + clamp(barPct, 0, 100) + '%"></i></span>'
+    + '<span class="dn-pt"><span>' + barTxt + '</span>' + (barEnd ? '<span>' + barEnd + '</span>' : '') + '</span></span>';
+  const actions = (isToday ? '<button class="btn" data-act="bored">Bored?</button>' : '') + '<button class="btn" data-act="print" aria-label="Print" title="Print">' + ic('print') + '</button>'
     + (CUR <= t ? '<button class="btn pri" data-act="close">Close day</button>' : '');
   let top = '';
   if (!localStorage.getItem(LS_ONB)) top += '<div class="card inbox" style="margin-bottom:12px"><h3>Welcome to DayBox</h3><ol class="small" style="margin:0 0 10px;padding-left:18px"><li>Sign in with Google (the same account as Tenfold) so it syncs to your phone.</li><li>When a block ends, tap ✓ or ✗. That is all the logging.</li><li>Bored or free? Press <b>What now?</b></li></ol><div class="row"><button class="btn pri sm" data-act="signin">Sign in</button><button class="btn ghost sm" data-act="onb">Got it</button></div></div>';
   const statTxt = d.untracked ? '' : (sc.past ? '<span><b>' + sc.marked + '/' + sc.past + '</b>marked</span>' : '') + (pil.pillarsPlanned ? '<span><b>' + pil.pillarsKept + '/' + pil.pillarsPlanned + '</b>pillars</span>' : '') + '<span><b>' + durTxt(free) + '</b>free</span>';
-  if (isToday) top += nowBarHtml(d, statTxt);
   if (isToday && pendingOps()) top += '<div class="al" style="margin-bottom:10px">' + ic('saarthi', 's-ic') + '<span>Saarthi has <b>' + pendingOps() + '</b> suggestions.</span><button class="btn sm x" data-act="nav" data-v="saarthi">Open</button></div>';
   if (yday && yday.close && yday.close.mit && isToday) top += '<div class="al" style="margin-bottom:10px">★ <span>Today\'s MIT (from last night): <b>' + esc(yday.close.mit) + '</b></span></div>';
   if (d.untracked) top += '<div class="untracked">' + ic('lock', 's-ic') + '<span>Not tracked. DayBox was not used this day.</span><button class="btn sm" data-act="track-empty">Add what happened</button><button class="btn sm" data-act="track-routine">Fill from routine</button></div>';
@@ -1123,7 +1124,7 @@ function beep(kind) {
   } catch (e) {}
 }
 function notify(msg) { try { if ('Notification' in window && Notification.permission === 'granted') new Notification('DayBox', { body: msg, icon: 'icon-192.png' }); } catch (e) {} }
-let lastTick = nowMin(), lastDate = today(), lastHalf = nowMin();
+let lastTick = nowMin(), lastDate = today();
 function tick() {
   const t = today(), nm = nowMin();
   if (t !== lastDate) { lastDate = t; lastTick = 0; ensureToday(); if (CUR < t && VIEW === 'today') CUR = t; if (!DRAGGING && $('#ov').hidden) render(); return; }
@@ -1138,9 +1139,7 @@ function tick() {
   if (crossed && VIEW === 'today' && CUR === t && !DRAGGING && $('#ov').hidden) { lastTick = nm; render(); return; }
   lastTick = nm;
   if (VIEW === 'today' && CUR === t && !DRAGGING && $('#ov').hidden) {
-    const nb = $('#nowbar'); if (nb && d) { const st = nb.querySelector('.nc-stats'); nb.outerHTML = nowBarHtml(d, st ? st.innerHTML : ''); }
-    if (Math.floor(nm / 30) !== Math.floor(lastHalf / 30)) { lastHalf = nm; render(); return; }
-    renderNav();
+    render();  // header bar + now cell move with the clock
   }
 }
 function ring(kind, b, d) {
