@@ -123,7 +123,7 @@ document.addEventListener('dbx-inbox', e => { INBOX = e.detail || null; renderNa
 document.addEventListener('dbx-ask', e => {
   const prev = ASK; ASK = e.detail || null;
   if (ASK && prev && prev.at === ASK.at && prev.state !== ASK.state) {
-    if (ASK.state === 'done' && ASK.kind === 'move') toast('Saarthi moved ' + (ASK.title || 'it') + '. Check Saarthi for why.', VIEW === 'saarthi' ? null : 'See', () => setView('saarthi'), 9000);
+    if (ASK.state === 'done' && ASK.kind === 'move') toast(ASK.msg || 'Saarthi moved ' + (ASK.title || 'it') + '.', null, null, 15000);
     else if (ASK.state === 'done' && ASK.kind === 'tell') toast('Saarthi has ' + (ASK.n || 0) + ' change' + (ASK.n === 1 ? '' : 's') + ' for you.', VIEW === 'saarthi' ? null : 'See', () => setView('saarthi'), 9000);
     else if (ASK.state === 'done') toast(ASK.kind === 'week' ? 'Week plan ready: ' + (ASK.n || 0) + ' blocks to accept in Saarthi.' : 'Saarthi sent ' + (ASK.n || 0) + ' idea' + (ASK.n === 1 ? '' : 's') + '.');
     else if (ASK.state === 'error') toast('Saarthi failed: ' + (ASK.error || 'unknown'), null, null, 9000);
@@ -597,7 +597,7 @@ function cellFactory(d, big, join) {
     const drag = big && !locked && !b.pillar && (st === 'up' || st === 'now' || st === 'mark');
     let inner = '';
     // its small things (e.g. SRM Study 20 min, the idea of the day) show on the block, not only in the editor
-    const att = X.attachObjs(b.attach).map(a => (a.done ? '✓ ' : '') + a.t).join(' · ');
+    const att = X.attachObjs(b.attach).map(a => (a.done ? '✓ ' : '') + a.t).join(' · ') || b.note || '';
     if (o.first) inner = (o.title ? '<span class="ck-t">' + esc(b.title) + (big && att ? '<small class="ck-a"> · ' + esc(att) + '</small>' : '') + '</span>' : '') + (o.time ? '<span class="ck-m">' + hm(b.start) + '</span>' : '');
     else { cls += ' cont'; if (o.title) inner = '<span class="ck-t cont">' + esc(big && att ? att : b.title) + '</span>'; }
     if (o.tick && o.first && (st === 'done' || st === 'mark')) inner += '<i class="ck-i">' + (st === 'done' ? '✓' : '!') + '</i>';
@@ -1008,6 +1008,7 @@ function openRule(id) {
     + '<div class="row"><label class="check"><input id="rPillar" type="checkbox"' + (r.pillar ? ' checked' : '') + '> Pillar (never moves)</label><label class="check"><input id="rStrict" type="checkbox"' + (r.strict ? ' checked' : '') + '> Strict, no backup</label></div>'
     + '<label class="field"><span>Backup slot, same day (pillars)</span><input id="rBackup" type="time" step="300" value="' + (r.backup != null ? hm(r.backup) : '') + '"></label>'
     + '<label class="field"><span>Small things attached (comma separated)</span><input id="rAttach" type="text" value="' + esc((r.attach || []).join(', ')) + '"></label>'
+    + '<label class="field"><span>Note: what to do in it</span><input id="rNote" type="text" value="' + esc(r.note || '') + '" placeholder="e.g. Phone in another room. Read, talk, plan tomorrow."></label>'
     + '<label class="field"><span>Ideas, one a day in turn (comma separated)</span><input id="rRotate" type="text" value="' + esc((r.rotate || []).join(', ')) + '" placeholder="e.g. Tue: Draw or paint, Story time, Outdoor play"></label><p class=\"hint\" style=\"margin:-6px 0 0\">\"Tue: ...\" is fixed on that day; plain ones take turns, in random order.</p>'
     + (id ? '<label class="check"><input id="rToday" type="checkbox" checked> Also change today</label>' : '')
     + '<p class="hint" style="margin:0">Applies from today on. Saved past days keep the old time.</p>'
@@ -1020,7 +1021,7 @@ function openRule(id) {
     $('[data-save]', sh).onclick = () => {
       const title = $('#rTitle', sh).value.trim(); if (!title) return $('#rTitle', sh).focus();
       const pillar = $('#rPillar', sh).checked, strict = pillar && $('#rStrict', sh).checked, bv = $('#rBackup', sh).value;
-      const patch = { title, cat: $('#rCat', sh).value, start: toMin($('#rStart', sh).value), dur: +$('#rDur', sh).value, days, pillar, strict, backup: pillar && !strict && bv ? toMin(bv) : null, attach: $('#rAttach', sh).value.split(',').map(x => x.trim()).filter(Boolean), rotate: $('#rRotate', sh).value.split(',').map(x => x.trim()).filter(Boolean) };
+      const patch = { title, cat: $('#rCat', sh).value, start: toMin($('#rStart', sh).value), dur: +$('#rDur', sh).value, days, pillar, strict, backup: pillar && !strict && bv ? toMin(bv) : null, attach: $('#rAttach', sh).value.split(',').map(x => x.trim()).filter(Boolean), rotate: $('#rRotate', sh).value.split(',').map(x => x.trim()).filter(Boolean), note: $('#rNote', sh).value.trim() };
       const mr = X.makeRoom(CFG, Object.assign({ id: id || '_new' }, patch), id, t);
       if (mr.error) return toast(mr.error + '. Pick another time.', null, null, 7000);
       if (mr.trimmed.length) toast('Made room: trimmed ' + mr.trimmed.join(', ') + ' from today.', null, null, 6000);

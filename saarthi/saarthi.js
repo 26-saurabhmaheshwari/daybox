@@ -332,8 +332,12 @@ async function moveSmart(a) {
   if (errs.length) throw new Error('No good slot found: ' + errs[0]);
   p.title = p.title || 'Move ' + a.title;
   await proposeObj(p, { kind: 'move' });
-  return applyReq(LAST_REQ);
+  const n = await applyReq(LAST_REQ);
+  const last = (p.ops || []).filter(o => o.op && (o.op.type === 'addBlock' || o.op.type === 'moveBlock')).pop() || {};
+  MOVE_MSG = (last.label || p.summary || 'Moved ' + a.title) + (last.why ? ': ' + last.why : '');
+  return n;
 }
+let MOVE_MSG = '';
 async function watch() {
   const uid = await getUid(), ref = 'planner/' + uid + '/meta/ask';
   console.log('Saarthi watcher on (' + findClaude() + '). Tap + in DayBox -> Saarthi. Ctrl+C to stop.');
@@ -373,7 +377,7 @@ async function watch() {
         (p.ops || []).forEach(o => { if (o.op && !o.op.date) o.op.date = a.date; });
         n = await proposeObj(p, { kind: 'ideas' });
       }
-      await write(uid, ref, Object.assign({}, a, { state: 'done', n, doneAt: Date.now() }));
+      await write(uid, ref, Object.assign({}, a, { state: 'done', n, doneAt: Date.now() }, a.kind === 'move' ? { msg: MOVE_MSG } : {}));
       console.log(stamp() + ' sent ' + n + ' ideas in ' + Math.round((Date.now() - t0) / 1000) + 's');
     } catch (e) {
       console.error(stamp() + ' failed: ' + e.message);

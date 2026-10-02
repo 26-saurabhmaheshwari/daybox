@@ -214,7 +214,7 @@ function blockFrom(src, extra) {
     id: uid(), start: src.start, dur: src.dur, title: src.title, cat: src.cat,
     pillar: !!src.pillar, backup: src.backup == null ? null : src.backup, strict: !!src.strict,
     checks: !!src.checks, mit: !!src.mit, attach: attachObjs(src.attach), status: 'planned',
-  }, extra || {});
+  }, src.note ? { note: src.note } : {}, extra || {}); // a routine block's note (what to do) comes along
 }
 /* this week's picks: each line picks an item you already have (nugget, dream, hobby...), so its hours count there.
    No time = Saarthi's week plan finds the slot. You-night is a routine block now (old plans keep it). */
