@@ -580,7 +580,7 @@ function segHtml(b, sg, main, c, extra) {
   const past = c.date < t || (c.date === t && b.start + b.dur <= nm);
   const needs = past && b.status === 'planned' && !c.virtual && b.cat !== 'sleep';
   const marked = isMarked(b), doneLock = marked && !UNLOCKED.has(b.id);
-  const cls = ['seg', 'st-' + (b.status || 'planned'), sg.first ? 'first' : '', sg.last ? 'last' : '', b.pillar ? 'pillar' : '', doneLock ? 'done-lock' : '', extra || ''].join(' ');
+  const cls = ['ev', 'st-' + (b.status || 'planned'), sg.first ? 'first' : '', sg.last ? 'last' : '', b.pillar ? 'pillar' : '', doneLock ? 'done-lock' : '', extra || ''].join(' ');
   let inner = '';
   // every piece of a block that wraps across hours carries its name; the time sits on the main piece
   inner += '<span class="sg-t' + (sg.first ? '' : ' cont') + '">' + (sg.first ? '' : '↳ ') + (b.status === 'done' ? '<span class="ok">✓</span>' : '') + (b.pillar && sg.first ? ic('lock', 's-ic') : '') + (b.mit && sg.first ? '<span class="mit">★</span>' : '') + esc(b.title) + '</span>';
@@ -615,7 +615,7 @@ function bindDayGrid(host, c, h) {
   };
   host._minuteAt = minuteAt;
   host._ghost = (start, dur) => { segEls('_drop').forEach(x => x.remove()); if (start != null) paint({ id: '_drop', start, dur, title: '', cat: 'goal', status: 'planned' }, 'drop' + (X.clashWith(c.blocks, { start, dur }) ? ' clash' : '')); };
-  const segEls = id => $$('.seg[data-id="' + id + '"]', host);
+  const segEls = id => $$('.ev[data-id="' + id + '"]', host);
   const paint = (b, extra) => {
     segEls(b.id).forEach(x => x.remove());
     blockSegs(b, c, extra).forEach(x => { const tr = $('.dg-row[data-h="' + x.h + '"] .dg-track', host); if (tr) tr.insertAdjacentHTML('beforeend', x.html); });
@@ -623,8 +623,8 @@ function bindDayGrid(host, c, h) {
   host.onpointerdown = e => {
     if (e.button > 0) return;
     const ub = e.target.closest('button.sg-unlock');
-    if (ub) { e.preventDefault(); UNLOCKED.add(ub.closest('.seg').dataset.id); render(); toast('Unlocked for one change.'); return; }
-    const sg = e.target.closest('.seg');
+    if (ub) { e.preventDefault(); UNLOCKED.add(ub.closest('.ev').dataset.id); render(); toast('Unlocked for one change.'); return; }
+    const sg = e.target.closest('.ev');
     if (sg) {
       const b = c.blocks.find(x => x.id === sg.dataset.id);
       if (!b || sg.classList.contains('done-lock')) return;
