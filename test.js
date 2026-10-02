@@ -195,7 +195,7 @@ t('categories: add, soft delete moves rules + items, free time = has a balance s
 t('nuggets sit in the category named like their Tenfold category; missing ones get added once', () => {
   const m = X.seedConfig();
   const tf = { goals: [{ id: 'p', name: 'Fit', cat: 'Health', sec: 'yearly' }, { id: 'a', name: 'Run', sec: 'active', parentId: 'p' }, { id: 'q', name: 'Learn', cat: 'Learning', sec: 'yearly' }, { id: 'b', name: 'Spanish', cat: 'Learning', sec: 'active', parentId: 'q' }] };
-  assert.strictEqual(X.tfGoals(m, tf).find(g => g.id === 'a').cat, 'health'); // inherits parent's Tenfold category
+  assert.strictEqual(X.tfGoals(m, tf).find(g => g.id === 'a').cat, 'health'); assert.strictEqual(X.tfGoals(m, tf).find(g => g.id === 'a').name, 'Fit'); assert.strictEqual(X.tfGoals(m, tf).find(g => g.id === 'a').mini, 'Run'); // shown by the parent name // inherits parent's Tenfold category
   assert.strictEqual(X.ensureTfCats(m, tf).join(), 'Learning'); assert.strictEqual(X.ensureTfCats(m, tf).length, 0);
   const lc = m.cats.find(c => c.name === 'Learning'); assert.strictEqual(X.tfGoals(m, tf).find(g => g.id === 'b').cat, lc.id);
   X.deleteCat(m, lc.id); assert.strictEqual(X.ensureTfCats(m, tf).length, 0); // deleted stays deleted
@@ -236,6 +236,16 @@ t('report: hours per type', () => {
   const st = { days: { [k]: { date: k, blocks: [{ id: 'a', start: 600, dur: 60, title: 'Work', cat: 'office', status: 'done' }, { id: 'b', start: 700, dur: 30, title: 'Admin', cat: 'admin', status: 'done' }, { id: 'c', start: 800, dur: 60, title: 'Guitar', cat: 'hobby', status: 'skipped' }] } } };
   const r = X.rangeReport(m, st, k, k);
   assert.strictEqual(r.byType.office.actual, 90); assert.strictEqual(r.byType.nongoal.planned, 60); assert.strictEqual(r.byType.nongoal.actual, 0);
+});
+t('ops: setStatus, removeTodo, at picks one of two same-title blocks', () => {
+  const m = X.seedConfig(); const k = TODAY;
+  const st = { days: { [k]: { date: k, blocks: [{ id: 'a', start: 600, dur: 30, title: 'Walk', cat: 'health', status: 'planned' }, { id: 'b', start: 900, dur: 30, title: 'Walk', cat: 'health', status: 'planned' }], todo: [{ id: 't', title: 'Exercise', min: 30 }] } } };
+  let r = X.applyOp(m, st, { type: 'removeBlock', date: k, title: 'Walk', at: 900 }, k); assert(!r.error, r.error);
+  assert.strictEqual(r.day.blocks.length, 1); assert.strictEqual(r.day.blocks[0].start, 600); st.days[k] = r.day;
+  r = X.applyOp(m, st, { type: 'setStatus', date: k, title: 'walk', status: 'done' }, k); assert.strictEqual(r.day.blocks[0].status, 'done'); st.days[k] = r.day;
+  assert(X.applyOp(m, st, { type: 'setStatus', date: X.addDays(k, 1), title: 'Walk', status: 'done' }, k).error, 'future cannot be done');
+  r = X.applyOp(m, st, { type: 'removeTodo', date: k, title: 'exercise' }, k); assert.strictEqual(r.day.todo.length, 0);
+  assert(X.applyOp(m, st, { type: 'removeTodo', date: k, title: 'Nope' }, k).error);
 });
 t('my-routine.json loads', () => {
   if (!fs.existsSync(__dirname + '/my-routine.json')) return;

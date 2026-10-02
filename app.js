@@ -114,7 +114,8 @@ document.addEventListener('dbx-inbox', e => { INBOX = e.detail || null; renderNa
 document.addEventListener('dbx-ask', e => {
   const prev = ASK; ASK = e.detail || null;
   if (ASK && prev && prev.at === ASK.at && prev.state !== ASK.state) {
-    if (ASK.state === 'done') toast(ASK.kind === 'week' ? 'Week plan ready: ' + (ASK.n || 0) + ' blocks to accept in Saarthi.' : 'Saarthi sent ' + (ASK.n || 0) + ' idea' + (ASK.n === 1 ? '' : 's') + '.');
+    if (ASK.state === 'done' && ASK.kind === 'tell') toast('Saarthi has ' + (ASK.n || 0) + ' change' + (ASK.n === 1 ? '' : 's') + ' for you.', VIEW === 'saarthi' ? null : 'See', () => setView('saarthi'), 9000);
+    else if (ASK.state === 'done') toast(ASK.kind === 'week' ? 'Week plan ready: ' + (ASK.n || 0) + ' blocks to accept in Saarthi.' : 'Saarthi sent ' + (ASK.n || 0) + ' idea' + (ASK.n === 1 ? '' : 's') + '.');
     else if (ASK.state === 'error') toast('Saarthi failed: ' + (ASK.error || 'unknown'), null, null, 9000);
   }
   if (VIEW === 'today' || VIEW === 'saarthi') render();
@@ -738,7 +739,7 @@ function viewToday() {
   const dnav = '<span class="dnav' + (isToday ? '' : ' off') + '"><span class="dn-row"><button type="button" class="dn-a" data-act="prev" aria-label="Previous day">' + ic('left') + '</button>'
     + '<button type="button" class="dn-mid" data-act="gotoday" title="' + (isToday ? 'Today' : 'Not today. Tap to go back to today') + '">' + dateTxt + '</button>'
     + '<button type="button" class="dn-a" data-act="next" aria-label="Next day">' + ic('right') + '</button></span></span>';
-  const actions = '<button class="btn ghost" data-act="print" aria-label="Print" title="Print">' + ic('print') + '</button>'
+  const actions = (AUTH.signedIn ? '<button class="btn ghost" data-act="nav" data-v="saarthi" aria-label="Tell Saarthi" title="Tell Saarthi">' + ic('spark') + '</button>' : '') + '<button class="btn ghost" data-act="print" aria-label="Print" title="Print">' + ic('print') + '</button>'
     + (CUR <= t ? '<button class="cd-btn" data-act="close" aria-label="Close day" data-tip="Close day">' + ic('check') + '</button>' : '');
   let top = '';
   if (!localStorage.getItem(LS_ONB)) top += '<div class="card inbox" style="margin-bottom:12px"><h3>Welcome to DayBox</h3><ol class="small" style="margin:0 0 10px;padding-left:18px"><li>Sign in with Google (the same account as Tenfold) so it syncs to your phone.</li><li>When a block ends, tap ✓ or ✗. That is all the logging.</li><li>Bored or free? Press <b>What now?</b></li></ol><div class="row"><button class="btn pri sm" data-act="signin">Sign in</button><button class="btn ghost sm" data-act="onb">Got it</button></div></div>';
@@ -884,7 +885,7 @@ function viewBank() {
       + '<label class="check" style="margin-bottom:12px"><input type="checkbox" id="tfOn"' + (CFG.tf.on ? ' checked' : '') + '> Use them in suggestions</label>';
     if (!TF) body += '<div class="empty">No Tenfold data found. Sign in with the same Google account as Tenfold, or open DayBox in the same browser where you use Tenfold.</div>';
     else if (!gs.length) body += '<div class="empty">No live nugget minis in Tenfold. Make a mini a Live nugget there and it shows here.</div>';
-    else body += '<table class="tbl" id="tfTbl"><thead><tr><th>Nugget</th><th>Left</th><th>Chunk (min)</th></tr></thead><tbody>' + gs.map(g => { const c = catOf(CFG, g.cat); const left = !(+g.target) ? 'no target' : g.left <= 0 ? 'done' : g.leftMin != null ? durTxt(g.leftMin) : g.left + ' ' + esc(g.unit || ''); return '<tr data-id="' + esc(g.id) + '"><td style="text-align:left"><b>' + esc(g.name) + '</b><div class="muted small"><span class="chip" style="--c:' + c.color + '"><i></i>' + esc(c.name) + '</span>' + (g.target ? ' ' + (g.cur || 0) + '/' + g.target + ' ' + esc(g.unit || '') : '') + '</div></td><td class="mono small">' + left + '</td><td><input type="number" min="10" step="5" data-f="chunk" value="' + g.chunk + '" style="width:76px"></td></tr>'; }).join('') + '</tbody></table>';
+    else body += '<table class="tbl" id="tfTbl"><thead><tr><th>Nugget</th><th>Left</th><th>Chunk (min)</th></tr></thead><tbody>' + gs.map(g => { const c = catOf(CFG, g.cat); const left = !(+g.target) ? 'no target' : g.left <= 0 ? 'done' : g.leftMin != null ? durTxt(g.leftMin) : g.left + ' ' + esc(g.unit || ''); return '<tr data-id="' + esc(g.id) + '"><td style="text-align:left"><b>' + esc(g.name) + '</b><div class="muted small">' + (g.mini && g.mini !== g.name ? esc(g.mini) + ' · ' : '') + '<span class="chip" style="--c:' + c.color + '"><i></i>' + esc(c.name) + '</span>' + (g.target ? ' ' + (g.cur || 0) + '/' + g.target + ' ' + esc(g.unit || '') : '') + '</div></td><td class="mono small">' + left + '</td><td><input type="number" min="10" step="5" data-f="chunk" value="' + g.chunk + '" style="width:76px"></td></tr>'; }).join('') + '</tbody></table>';
     body += '</div>';
   } else if (tab === 'nongoals') {
     const doneTxt = it => { const h = X.hoursDone(STORE, it), ago = X.lastDone(STORE, it, t); return (h ? durTxt(h) + ' done' : 'not done yet') + (ago == null ? '' : ' · last ' + (ago === 1 ? 'yesterday' : ago + ' days ago')); };
@@ -1087,23 +1088,63 @@ function sanyamHtml() {
 /* ---------- Saarthi inbox ---------- */
 function opLabel(o) { return o.label || (o.op && o.op.type) || 'change'; }
 function viewSaarthi() {
-  let body = '<div class="card"><h3>How Saarthi works</h3><ol class="small" style="margin:0;padding-left:18px"><li>On your laptop, open Claude Code and type <b>/saarthi</b> (or <b>/saarthi evening</b>, <b>/saarthi week</b>).</li><li>Saarthi reads your DayBox days plus your Tenfold goals and sanyam (read-only), and tells you what to change and why.</li><li>Its exact suggestions land here. Nothing changes until you accept. You can also say "ok 1,3" in Claude Code.</li><li>No API key and no extra money: it runs on your Claude plan.</li></ol></div>';
-  if (!AUTH.signedIn) body += '<div class="empty" style="margin-top:14px">Sign in to receive Saarthi suggestions.<div style="margin-top:10px"><button class="btn pri" data-act="signin">Sign in with Google</button></div></div>';
-  if (AUTH.signedIn) {
-    const busy = ASK && ASK.kind === 'week' && (ASK.state === 'asked' || ASK.state === 'working') && Date.now() - ASK.at < 5 * 60e3;
-    body += '<div class="card" style="margin-top:14px"><div class="row"><div style="flex:1"><h3 style="margin:0">Week plan</h3><div class="muted small">Saarthi fills tomorrow to Sunday (all of next week on a Sunday) from how the week is going: goals behind, nuggets left, balance, non goals.'
-      + (CFG.settings.weekPlanAt != null ? ' Every night at ' + hm(CFG.settings.weekPlanAt) + '.' : ' Nightly run is off (Settings).') + '</div></div>'
-      + (saAlive() ? '<button class="btn pri sm" data-act="weekask"' + (busy ? ' disabled' : '') + '>' + (busy ? 'Planning...' : 'Plan my week now') + '</button>' : '<span class="muted small">Start <span class="mono">saarthi.js watch</span> on your PC</span>') + '</div></div>';
-  }
-  if (!AUTH.signedIn) { /* sign-in card above */ }
-  else if (!INBOX || !INBOX.ops) body += '<div class="empty" style="margin-top:14px">No suggestions yet. Run /saarthi in Claude Code.</div>';
-  else {
-    body += '<div class="card inbox" style="margin-top:14px"><div class="row" style="margin-bottom:8px"><h3 style="margin:0">' + esc(INBOX.title || 'Suggestions') + '</h3><span class="muted small">' + (INBOX.at ? new Date(INBOX.at).toLocaleString() : '') + '</span>' + (pendingOps() > 1 ? '<button class="btn sm pri" data-act="opall" style="margin-left:auto">Accept all</button>' : '') + '</div>'
-      + (INBOX.summary ? '<p style="margin:0 0 10px">' + esc(INBOX.summary) + '</p>' : '')
-      + (INBOX.tips && INBOX.tips.length ? '<ul style="margin:0 0 12px;padding-left:18px">' + INBOX.tips.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '')
-      + INBOX.ops.map((o, i) => '<div class="op"><div><b>' + (i + 1) + '. ' + esc(opLabel(o)) + '</b>' + (o.why ? '<div class="muted small">' + esc(o.why) + '</div>' : '') + '</div><div class="row">' + (o.state === 'pending' || o.state === 'failed' ? (o.state === 'failed' ? '<span class="chip">failed</span>' : '') + '<button class="btn sm" data-act="oprej" data-i="' + i + '">Reject</button><button class="btn sm pri" data-act="opacc" data-i="' + i + '">Accept</button>' : '<span class="chip">' + esc(o.state) + '</span>') + '</div></div>').join('') + '</div>';
-  }
-  return { title: 'Saarthi', sub: 'your guide, you decide', body };
+  let body = '';
+  if (!AUTH.signedIn) return { title: 'Saarthi', sub: 'your guide, you decide', body: '<div class="empty">Sign in to use Saarthi.<div style="margin-top:10px"><button class="btn pri" data-act="signin">Sign in with Google</button></div></div>' };
+  const live = s => ASK && (ASK.state === 'asked' || ASK.state === 'working') && Date.now() - ASK.at < 5 * 60e3 && s;
+  const tellBusy = live(ASK && ASK.kind === 'tell'), weekBusy = live(ASK && ASK.kind === 'week');
+  // Tell Saarthi: plain words in, exact changes out
+  body += '<div class="card tell"><h3>Tell Saarthi</h3>'
+    + (saAlive()
+      ? '<textarea id="tellTxt" rows="3" maxlength="500" placeholder="e.g. Tomorrow I am busy till 5 pm. Only nitya naivaidya 10 min in the morning. 6-9 pm walk, 9 pm dinner."' + (tellBusy ? ' disabled' : '') + '>' + esc(TELL_DRAFT) + '</textarea>'
+        + '<div class="row" style="margin-top:8px"><span class="muted small" style="flex:1">' + (tellBusy ? 'Saarthi is working on: ' + esc(ASK.text || '') : 'Today, tomorrow or a weekday. You see the changes before anything moves.') + '</span><button class="btn pri sm" data-act="tellsend"' + (tellBusy ? ' disabled' : '') + '>' + (tellBusy ? 'Thinking...' : 'Send') + '</button></div>'
+      : '<p class="muted small" style="margin:0">Start <span class="mono">node D:/daybox/saarthi/saarthi.js watch</span> on your PC, then type here.</p>')
+    + '</div>';
+  body += '<div class="card" style="margin-top:14px"><div class="row"><div style="flex:1"><h3 style="margin:0">Week plan</h3><div class="muted small">Saarthi fills tomorrow to Sunday (all of next week on a Sunday) from how the week is going: goals behind, nuggets left, balance, non goals.'
+    + (CFG.settings.weekPlanAt != null ? ' Every night at ' + hm(CFG.settings.weekPlanAt) + '.' : ' Nightly run is off (Settings).') + '</div></div>'
+    + (saAlive() ? '<button class="btn sm" data-act="weekask"' + (weekBusy ? ' disabled' : '') + '>' + (weekBusy ? 'Planning...' : 'Plan my week now') + '</button>' : '') + '</div></div>';
+  if (!INBOX || !INBOX.ops || !INBOX.ops.length) body += '<div class="empty" style="margin-top:14px">No suggestions waiting.</div>';
+  else reqGroups().forEach(g => { body += reqCard(g); });
+  body += '<details class="card" style="margin-top:14px"><summary class="small"><b>How Saarthi works</b></summary><ol class="small" style="margin:8px 0 0;padding-left:18px"><li>Saarthi runs on your PC (<span class="mono">saarthi.js watch</span>) with your Claude plan. No API key, no extra money.</li><li>It reads your DayBox days plus your Tenfold goals and sanyam (read-only).</li><li>Its exact changes land here. Nothing moves until you accept. Undo is in Claude Code: <span class="mono">saarthi.js undo</span>.</li></ol></details>';
+  return { title: 'Saarthi', sub: 'your guide, you decide', body, after() { const t = $('#tellTxt'); if (t) { t.oninput = () => { TELL_DRAFT = t.value; }; t.onkeydown = e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) ACTS.tellsend(); }; } } };
+}
+let TELL_DRAFT = '';
+/* inbox ops grouped by request, newest first; ops from before groups existed share one */
+function reqGroups() {
+  const reqs = (INBOX.reqs || []).slice(), out = [];
+  INBOX.ops.forEach((o, i) => {
+    const id = o.req || 'r_old';
+    let g = out.find(x => x.id === id);
+    if (!g) { const r = reqs.find(x => x.id === id) || { id, title: INBOX.title, summary: INBOX.summary, tips: INBOX.tips, at: INBOX.at }; g = Object.assign({ items: [] }, r); out.push(g); }
+    g.items.push({ o, i });
+  });
+  return out.filter(g => g.items.some(x => x.o.state === 'pending' || x.o.state === 'failed') || Date.now() - (g.at || 0) < 86400e3).sort((a, b) => (b.at || 0) - (a.at || 0));
+}
+/* the days a group touches, before and after its waiting ops */
+function reqPreview(g) {
+  const ops = g.items.filter(x => x.o.state === 'pending').map(x => x.o.op).filter(op => op && op.date);
+  const dates = [...new Set(ops.map(op => op.date))].sort();
+  if (!dates.length || dates.length > 3) return '';
+  const t = today(), cfg = clone(CFG), store = { days: clone(STORE.days) };
+  const before = {}; dates.forEach(k => { before[k] = X.getDay(STORE, CFG, k, t); });
+  let err = null;
+  ops.forEach(op => { if (err) return; const r = X.applyOp(cfg, store, op, t); if (r.error) err = r.error; else if (r.day) store.days[r.day.date] = r.day; });
+  if (err) return '<p class="small" style="color:var(--alert);margin:6px 0">This no longer fits: ' + esc(err) + '</p>';
+  const list = (d, other) => d.blocks.filter(X.live).sort((a, b) => a.start - b.start).map(b => {
+    const same = other.some(x => x.start === b.start && x.dur === b.dur && norm(x.title) === norm(b.title));
+    return '<div class="pv' + (same ? '' : ' ch') + '" style="--c:' + catOf(CFG, b.cat).color + '"><span class="mono">' + hm(b.start) + '-' + hm(b.start + b.dur) + '</span> ' + esc(b.title) + '</div>';
+  }).join('') || '<div class="muted small">empty</div>';
+  return dates.map(k => { const after = X.getDay(store, cfg, k, t), a = before[k].blocks.filter(X.live), z = after.blocks.filter(X.live);
+    return '<div class="pv-day"><div class="pv-h">' + fmtShort(k) + '</div><div class="pv-cols"><div><div class="pv-t">Now</div>' + list(before[k], z) + '</div><div><div class="pv-t">After</div>' + list(after, a) + '</div></div></div>'; }).join('');
+}
+function reqCard(g) {
+  const pend = g.items.filter(x => x.o.state === 'pending').length;
+  return '<div class="card inbox" style="margin-top:14px"><div class="row" style="margin-bottom:6px"><h3 style="margin:0;flex:1">' + (g.text ? 'You: ' + esc(g.text) : esc(g.title || 'Suggestions')) + '</h3><span class="muted small">' + (g.at ? new Date(g.at).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : '') + '</span></div>'
+    + (g.summary ? '<p style="margin:0 0 10px">' + esc(g.summary) + '</p>' : '')
+    + (g.tips && g.tips.length ? '<ul style="margin:0 0 12px;padding-left:18px">' + g.tips.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '')
+    + (pend ? reqPreview(g) : '')
+    + g.items.map(({ o, i }) => '<div class="op"><div><b>' + esc(opLabel(o)) + '</b>' + (o.why ? '<div class="muted small">' + esc(o.why) + '</div>' : '') + '</div><div class="row">' + (o.state === 'pending' || o.state === 'failed' ? (o.state === 'failed' ? '<span class="chip">failed</span>' : '') + '<button class="btn sm" data-act="oprej" data-i="' + i + '">Reject</button><button class="btn sm pri" data-act="opacc" data-i="' + i + '">Accept</button>' : '<span class="chip">' + esc(o.state) + '</span>') + '</div></div>').join('')
+    + (pend > 1 ? '<div class="row" style="margin-top:10px;justify-content:flex-end"><button class="btn sm" data-act="reqrej" data-r="' + esc(g.id) + '">Reject all</button><button class="btn sm pri" data-act="reqacc" data-r="' + esc(g.id) + '">Accept all ' + pend + '</button></div>' : '')
+    + '</div>';
 }
 async function decideOp(i, accept) {
   const o = INBOX.ops[i]; if (!o || (o.state !== 'pending' && o.state !== 'failed')) return;
@@ -1328,6 +1369,15 @@ const ACTS = {
     ASK = { at: Date.now(), date: d.date, slots, state: 'asked' }; render();
     DBXFB.pushAsk(ASK).then(() => toast('Asked Saarthi. Ideas in about a minute.')).catch(e => { ASK = null; render(); toast('Could not ask: ' + e.message); });
   },
+  tellsend: () => {
+    const el = $('#tellTxt'), text = (el ? el.value : '').trim();
+    if (!text) { if (el) el.focus(); return; }
+    if (!window.DBXFB || !DBXFB.uid) return;
+    ASK = { at: Date.now(), kind: 'tell', text: text.slice(0, 500), date: CUR || today(), state: 'asked' }; render();
+    DBXFB.pushAsk(ASK).then(() => { TELL_DRAFT = ''; toast('Sent to Saarthi. Changes in about a minute.'); }).catch(e => { ASK = null; render(); toast('Could not send: ' + e.message); });
+  },
+  reqacc: async a => { for (const { o, i } of reqGroups().find(g => g.id === a.dataset.r).items) if (o.state === 'pending') await decideOp(i, true); },
+  reqrej: async a => { for (const { o, i } of reqGroups().find(g => g.id === a.dataset.r).items) if (o.state === 'pending') await decideOp(i, false); },
   weekask: () => {
     if (!window.DBXFB || !DBXFB.uid) return;
     ASK = { at: Date.now(), kind: 'week', state: 'asked' }; render();

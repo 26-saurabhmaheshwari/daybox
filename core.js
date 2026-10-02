@@ -383,7 +383,8 @@ function tfGoals(cfg, tf) {
     const minPer = mpu != null && mpu !== '' ? (+mpu || 0) : /min/i.test(unit) ? 1 : /hour|hr/i.test(unit) ? 60 : 0;
     const left = Math.max(0, (+g.target || 0) - (+g.cur || 0));
     const m = (cfg.tf.goalMap || {})[g.id] || {};
-    return { id: g.id, name: g.name, tfCat, sec: g.sec, secLabel: SEC[g.sec], cur: g.cur, target: g.target, unit, left,
+    return { id: g.id, name: par.name || g.name, mini: g.name, tfCat, // shown by the parent goal's name
+      sec: g.sec, secLabel: SEC[g.sec], cur: g.cur, target: g.target, unit, left,
       leftMin: minPer && +g.target ? Math.round(left * minPer) : null, // null: unit is not time, so DayBox cannot tell minutes left
       cat: tfCatId(cfg, tfCat), chunk: m.chunk || m.min || 45 };
   });
@@ -733,7 +734,8 @@ function mergeCloud(local, cloud) {
 }
 
 /* ---------- Saarthi proposals: exact edits you approve ---------- */
-/* op: {type:'addBlock', date, block} | {type:'moveBlock', date, title, start, dur?} | {type:'removeBlock', date, title}
+/* op: {type:'addBlock', date, block} | {type:'moveBlock', date, title, at?, start, dur?} | {type:'removeBlock', date, title, at?}
+       | {type:'setStatus', date, title, at?, status} | {type:'addTodo', date, todo} | {type:'removeTodo', date, title}
        | {type:'editTemplateBlock', tpl, title, start?, dur?, cat?} | {type:'addItem', item} | {type:'setBalance', balance} */
 function applyOp(cfg, store, op, today) {
   const dayFor = date => { const d = clone(getDay(store, cfg, date, today)); d.virtual = false; delete d.untracked; return d; };
@@ -748,8 +750,9 @@ function applyOp(cfg, store, op, today) {
   }
   if (op.type === 'moveBlock' || op.type === 'removeBlock') {
     const d = dayFor(op.date);
-    const b = d.blocks.find(x => norm(x.title) === norm(op.title) && x.status === 'planned');
-    if (!b) return { error: 'block "' + op.title + '" not found on ' + op.date };
+    // `at` (its current start) picks one of two blocks with the same title
+    const b = d.blocks.find(x => norm(x.title) === norm(op.title) && x.status === 'planned' && (op.at == null || x.start === op.at));
+    if (!b) return { error: 'block "' + op.title + '"' + (op.at != null ? ' at ' + hm(op.at) : '') + ' not found on ' + op.date };
     if (op.type === 'removeBlock') d.blocks = d.blocks.filter(x => x !== b);
     else {
       const cand = { start: op.start, dur: op.dur || b.dur };
@@ -763,6 +766,21 @@ function applyOp(cfg, store, op, today) {
     const d = dayFor(op.date), x = op.todo || {};
     if (!x.title) return { error: 'todo needs a title' };
     d.todo = (d.todo || []).concat({ id: uid(), title: x.title, min: x.min || 30, cat: x.cat || 'goal', done: false, by: 'saarthi' });
+    return { day: d };
+  }
+  if (op.type === 'removeTodo') {
+    const d = dayFor(op.date), n = (d.todo || []).length;
+    d.todo = (d.todo || []).filter(x => norm(x.title) !== norm(op.title));
+    if (d.todo.length === n) return { error: 'To fit task "' + op.title + '" not found on ' + op.date };
+    return { day: d };
+  }
+  if (op.type === 'setStatus') {
+    if (!['planned', 'done', 'partial', 'skipped'].includes(op.status)) return { error: 'status must be planned, done, partial or skipped' };
+    if (op.status !== 'planned' && op.date > today) return { error: 'cannot mark a future day ' + op.status };
+    const d = dayFor(op.date);
+    const b = d.blocks.find(x => norm(x.title) === norm(op.title) && x.status !== 'moved' && (op.at == null || x.start === op.at));
+    if (!b) return { error: 'block "' + op.title + '"' + (op.at != null ? ' at ' + hm(op.at) : '') + ' not found on ' + op.date };
+    b.status = op.status;
     return { day: d };
   }
   if (op.type === 'addRule') {
