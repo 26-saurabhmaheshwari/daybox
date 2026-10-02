@@ -564,8 +564,128 @@ function nowBarHtml(d, stats) {
     + dayBar(d, nm) + '</div>';
 }
 function dismissed(date) { const o = load(LS_DISMISS) || {}; return o[date] || []; }
-let FIT_PPM = 0.8;
-function dayPpm() { return isPhone() ? 0.9 : FIT_PPM; }
+/* ---------- day calendar: one row per hour, time runs left to right (:00-:30 | :30-:60) ---------- */
+let ROW_H = 44;
+function dgRows() { const s = CFG.settings, r = []; for (let h = Math.floor(s.dayStart / 60); h < Math.ceil(s.dayEnd / 60); h++) r.push(h); return r; }
+function segsOf(b) {
+  const out = [], e = b.start + b.dur;
+  for (let h = Math.floor(b.start / 60); h * 60 < e; h++) {
+    const s0 = Math.max(b.start, h * 60), s1 = Math.min(e, (h + 1) * 60);
+    if (s1 > s0) out.push({ h, l: (s0 - h * 60) / 60 * 100, w: (s1 - s0) / 60 * 100, first: s0 === b.start, last: s1 === e, min: s1 - s0 });
+  }
+  return out;
+}
+function segHtml(b, sg, main, c, extra) {
+  const cat = catOf(CFG, b.cat), t = today(), nm = nowMin();
+  const past = c.date < t || (c.date === t && b.start + b.dur <= nm);
+  const needs = past && b.status === 'planned' && !c.virtual && b.cat !== 'sleep';
+  const marked = isMarked(b), doneLock = marked && !UNLOCKED.has(b.id);
+  const cls = ['seg', 'st-' + (b.status || 'planned'), sg.first ? 'first' : '', sg.last ? 'last' : '', b.pillar ? 'pillar' : '', doneLock ? 'done-lock' : '', extra || ''].join(' ');
+  let inner = '';
+  if (main) {
+    inner += '<span class="sg-t">' + (b.status === 'done' ? '<span class="ok">✓</span>' : '') + (b.pillar ? ic('lock', 's-ic') : '') + (b.mit ? '<span class="mit">★</span>' : '') + esc(b.title) + '</span>';
+    if (sg.min >= 25) inner += '<span class="sg-m">' + hm(b.start) + '–' + hm(b.start + b.dur) + '</span>';
+  }
+  if (needs && sg.last) inner += '<i class="sg-q" title="How did it go?"></i>';
+  if (marked && sg.last) inner += doneLock ? '<button type="button" class="sg-unlock" title="Unlock to change" aria-label="Unlock to change">' + ic('lock') + '</button>' : '<span class="sg-unlock on" title="Unlocked for one change">' + ic('unlock') + '</span>';
+  if (sg.last && !b.pillar && !doneLock && c.editable) inner += '<i class="sg-rz" title="Drag to change the length"></i>';
+  return '<div class="' + cls + '" data-id="' + b.id + '" style="--c:' + cat.color + ';left:calc(' + sg.l + '% + 1px);width:calc(' + sg.w + '% - 2px)" title="' + esc(b.title) + ' ' + hm(b.start) + '–' + hm(b.start + b.dur) + '">' + inner + '</div>';
+}
+function blockSegs(b, c, extra) {
+  const ss = segsOf(b); if (!ss.length) return [];
+  const main = ss.reduce((m, x) => x.min > m.min ? x : m, ss[0]);
+  return ss.map(sg => ({ h: sg.h, html: segHtml(b, sg, sg === main, c, extra) }));
+}
+function dayGridHtml(c) {
+  const t = today(), nm = nowMin(), rows = dgRows(), by = {};
+  rows.forEach(h => { by[h] = []; });
+  c.blocks.forEach(b => blockSegs(b, c).forEach(x => { if (by[x.h]) by[x.h].push(x.html); }));
+  const nowH = c.date === t ? Math.floor(nm / 60) : -1;
+  return '<div class="dg" style="--rowh:' + ROW_H + 'px"><div class="dg-head"><span></span><div class="dg-scale"><span style="left:0">:00</span><span style="left:50%">:30</span></div></div>'
+    + rows.map(h => '<div class="dg-row' + (h === nowH ? ' now' : '') + ((c.date < t || (c.date === t && (h + 1) * 60 <= nm)) ? ' past' : '') + '" data-h="' + h + '"><span class="dg-h">' + pad(h) + ':00</span><div class="dg-track">' + by[h].join('')
+      + (h === nowH ? '<i class="dg-now" style="left:' + ((nm % 60) / 60 * 100) + '%"></i>' : '') + '</div></div>').join('') + '</div>';
+}
+function bindDayGrid(host, c, h) {
+  const s = CFG.settings;
+  const minuteAt = (x, y) => {
+    for (const tr of $$('.dg-track', host)) {
+      const r = tr.getBoundingClientRect();
+      if (y >= r.top - 1 && y <= r.bottom + 1 && x >= r.left - 60 && x <= r.right + 8) return +tr.parentNode.dataset.h * 60 + clamp((x - r.left) / r.width, 0, 1) * 60;
+    }
+    return null;
+  };
+  host._minuteAt = minuteAt;
+  const segEls = id => $$('.seg[data-id="' + id + '"]', host);
+  const paint = (b, extra) => {
+    segEls(b.id).forEach(x => x.remove());
+    blockSegs(b, c, extra).forEach(x => { const tr = $('.dg-row[data-h="' + x.h + '"] .dg-track', host); if (tr) tr.insertAdjacentHTML('beforeend', x.html); });
+  };
+  host.onpointerdown = e => {
+    if (e.button > 0) return;
+    const ub = e.target.closest('button.sg-unlock');
+    if (ub) { e.preventDefault(); UNLOCKED.add(ub.closest('.seg').dataset.id); render(); toast('Unlocked for one change.'); return; }
+    const sg = e.target.closest('.seg');
+    if (sg) {
+      const b = c.blocks.find(x => x.id === sg.dataset.id);
+      if (!b || sg.classList.contains('done-lock')) return;
+      return dragSeg(e, b, !!e.target.closest('.sg-rz'));
+    }
+    if (e.target.closest('.dg-track') && c.editable) createDrag(e);
+  };
+  function dragSeg(e, b, rz) {
+    const touch = e.pointerType === 'touch', canDrag = c.editable && !b.pillar;
+    let armed = canDrag && (!touch || rz), moved = false, lp = null, start = b.start, dur = b.dur;
+    const grab = (minuteAt(e.clientX, e.clientY) ?? b.start) - b.start;
+    if (canDrag && touch && !armed) lp = setTimeout(() => { armed = true; segEls(b.id).forEach(x => x.classList.add('lifting')); try { navigator.vibrate && navigator.vibrate(12); } catch (_) {} }, 260);
+    if (!touch && canDrag) e.preventDefault();
+    const tm = ev => { if (armed) ev.preventDefault(); };
+    const mv = ev => {
+      const dx = ev.clientX - e.clientX, dy = ev.clientY - e.clientY;
+      if (!armed) { if (Math.hypot(dx, dy) > 8) { clearTimeout(lp); lp = null; } return; }
+      if (!moved && Math.hypot(dx, dy) < 4) return;
+      moved = true; DRAGGING = true;
+      const m = minuteAt(ev.clientX, ev.clientY); if (m == null) return;
+      if (rz) dur = clamp(Math.round((m - b.start) / 15) * 15, 15, s.dayEnd - b.start);
+      else start = clamp(Math.round((m - grab) / 15) * 15, s.dayStart, s.dayEnd - b.dur);
+      const clash = X.clashWith(c.blocks, { start, dur }, b.id);
+      paint(Object.assign({}, b, { start, dur }), 'dragging' + (clash ? ' clash' : ''));
+    };
+    const cleanup = () => {
+      clearTimeout(lp);
+      removeEventListener('pointermove', mv); removeEventListener('pointerup', up); removeEventListener('pointercancel', cancel);
+      document.removeEventListener('touchmove', tm);
+      setTimeout(() => { DRAGGING = false; }, 0);
+    };
+    const up = () => { cleanup(); if (moved) h.onCommit({ c, b, to: c, start, dur }); else h.onOpen(c, b); };
+    const cancel = () => { cleanup(); if (moved) render(); };
+    document.addEventListener('touchmove', tm, { passive: false });
+    addEventListener('pointermove', mv); addEventListener('pointerup', up); addEventListener('pointercancel', cancel);
+  }
+  function createDrag(e) {
+    const m0r = minuteAt(e.clientX, e.clientY); if (m0r == null) return;
+    const m0 = clamp(Math.floor(m0r / 15) * 15, s.dayStart, s.dayEnd - 15);
+    if (e.pointerType === 'touch') {
+      const x0 = e.clientX, y0 = e.clientY;
+      const up = ev => { off(); if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 8) h.onNew(c, m0, 30); };
+      const off = () => { removeEventListener('pointerup', up); removeEventListener('pointercancel', off); };
+      addEventListener('pointerup', up); addEventListener('pointercancel', off);
+      return;
+    }
+    e.preventDefault();
+    let end = m0 + 30, moved = false;
+    const ghost = { id: '_ghost', start: m0, dur: 30, title: 'New', cat: 'goal', status: 'planned' };
+    const mv = ev => {
+      const m = minuteAt(ev.clientX, ev.clientY); if (m == null) return;
+      const nend = clamp(Math.ceil(m / 15) * 15, m0 + 15, s.dayEnd);
+      if (!moved && nend === m0 + 15 && Math.abs(ev.clientX - e.clientX) < 5) return;
+      moved = true; end = nend; ghost.dur = end - m0; ghost.title = hm(m0) + '–' + hm(end);
+      paint(ghost, 'ghost');
+    };
+    const up = () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', up); segEls('_ghost').forEach(x => x.remove()); h.onNew(c, m0, moved ? end - m0 : 30); };
+    addEventListener('pointermove', mv); addEventListener('pointerup', up);
+  }
+}
+
 const blockOf = (d, x) => x.placed ? d.blocks.find(b => b.id === x.placed) : null;
 let SUGS = [];
 const FIT_MAX = 5;  // your tasks + Saarthi suggestions, never more than 5 a day
@@ -655,7 +775,7 @@ function openPlace(key, start) {
     sh.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); go(); } };
   });
 }
-function bindFitDrag(ppm) {
+function bindFitDrag() {
   const box = $('.ag.fit'), grid = $('#dayGrid'); if (!box || !grid) return;
   box.onpointerdown = e => {
     const row = e.target.closest('[data-drag]');
@@ -671,9 +791,10 @@ function bindFitDrag(ppm) {
       ghost.style.left = (ev.clientX + 12) + 'px'; ghost.style.top = (ev.clientY + 10) + 'px';
       const gr = grid.getBoundingClientRect();
       if (ev.clientX >= gr.left && ev.clientX <= gr.right) { if (ev.clientY < gr.top + 36) grid.scrollTop -= 14; else if (ev.clientY > gr.bottom - 36) grid.scrollTop += 14; }
-      const col = grid.querySelector('.g-col'), r = col.getBoundingClientRect();
-      const inside = ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= Math.max(r.top, gr.top) && ev.clientY <= Math.min(r.bottom, gr.bottom);
-      at = inside ? clamp(Math.floor((CFG.settings.dayStart + (ev.clientY - r.top) / ppm) / 15) * 15, CFG.settings.dayStart, CFG.settings.dayEnd - 15) : null;
+      if (ev.clientY > innerHeight - 48) scrollBy(0, 12); else if (ev.clientY < 56) scrollBy(0, -12);
+      const mm = grid._minuteAt ? grid._minuteAt(ev.clientX, ev.clientY) : null;
+      const inside = mm != null && ev.clientX >= gr.left && ev.clientX <= gr.right && ev.clientY >= gr.top && ev.clientY <= gr.bottom;
+      at = inside ? clamp(Math.floor(mm / 15) * 15, CFG.settings.dayStart, CFG.settings.dayEnd - 15) : null;
       ghost.classList.toggle('over', inside);
       ghost.textContent = row.dataset.label + (at != null ? ' · ' + hm(at) : ' · drop on the calendar');
     };
@@ -699,7 +820,6 @@ function viewToday() {
   const free = X.gaps(d.blocks, isToday ? Math.max(s.dayStart, nm) : s.dayStart, s.bedtime, 15).reduce((a, g) => a + g.end - g.start, 0);
   const pil = X.dayStats(CFG, d);
   const yday = DAYS[addDays(CUR, -1)];
-  const ppm = dayPpm();
   const actions = '<button class="iconbtn" data-act="prev" aria-label="Previous day">' + ic('left') + '</button><button class="iconbtn" data-act="next" aria-label="Next day">' + ic('right') + '</button>'
     + (isToday ? '' : '<button class="btn" data-act="gotoday">Today</button>')
     + '<button class="btn" data-act="print" aria-label="Print">' + ic('print') + (phone ? '' : 'Print') + '</button>'
@@ -725,7 +845,7 @@ function viewToday() {
         + shown.map(a => '<div class="al ' + a.lvl + '"><span>' + esc(a.t) + '</span><button class="btn ghost sm x" data-act="dismiss" data-t="' + esc(a.t) + '" aria-label="Dismiss">×</button></div>').join('') + '</div>';
   }
   const col = { day: d, date: CUR, blocks: d.blocks, editable: true, past, virtual: d.virtual && !d.untracked, showGaps: !past, twice };
-  const grid = '<div class="gwrap daygrid" id="dayGrid">' + gridHtml([col], 'day', ppm) + '</div>';
+  const grid = '<div class="gwrap daygrid" id="dayGrid">' + dayGridHtml(col) + '</div>';
   const hint = '';
   let body;
   // one calendar only: the To fit list sits beside (laptop) or above (phone) the timeline
@@ -739,18 +859,17 @@ function viewToday() {
       const fi = $('#fitTitle'); if (fi) fi.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); fitAdd(); } };
       if (!showGrid) return;
       const gw = $('#dayGrid');
-      if (!phone) {  // size the day to the window: :00 and :30 rows, no scrolling
-        const avail = innerHeight - gw.getBoundingClientRect().top - scrollY - 44;
-        const ideal = clamp(avail / (s.dayEnd - s.dayStart), 0.5, 1.2);
-        if (Math.abs(ideal - FIT_PPM) > 0.02) { FIT_PPM = ideal; return render(); }
-      }
-      bindGrid(gw, [col], 'day', ppm, dayHandlers);
-      bindFitDrag(ppm);
+      // one row per hour, sized so the whole day fits the window (phone: fixed rows, scrolls)
+      const rows = dgRows().length;
+      const ideal = phone ? 40 : clamp(Math.floor((innerHeight - gw.getBoundingClientRect().top - scrollY - 24 - 24) / rows), 30, 56);
+      if (ideal !== ROW_H) { ROW_H = ideal; return render(); }
+      bindDayGrid(gw, col, dayHandlers);
+      bindFitDrag();
       if (SCROLL_NOW) {
         SCROLL_NOW = false;
         const first = d.blocks.filter(b => b.cat !== 'sleep').reduce((m, b) => Math.min(m, b.start), 1440);
-        const target = isToday ? nm - 60 : (first < 1440 ? first - 30 : s.dayStart);
-        gw.scrollTop = Math.max(0, (target - s.dayStart) * ppm);
+        const target = isToday ? nm : (first < 1440 ? first : s.dayStart);
+        gw.scrollTop = Math.max(0, (Math.floor(target / 60) - Math.floor(s.dayStart / 60) - 1) * ROW_H);
       }
     },
   };
@@ -1203,8 +1322,8 @@ function tick() {
   lastTick = nm;
   if (VIEW === 'today' && CUR === t && !DRAGGING && $('#ov').hidden) {
     const nb = $('#nowbar'); if (nb && d) { const st = nb.querySelector('.nb-stats'); const keep = st ? Array.from(st.children).slice(0, -1).map(x => x.outerHTML).join('') : ''; nb.outerHTML = nowBarHtml(d, keep); }
-    const nl = $('.nowline'); const s = CFG.settings, ppm = dayPpm();
-    if (nl) nl.style.top = ((nm - s.dayStart) * ppm) + 'px';
+    const nl = $('.dg-now');
+    if (nl) { if (Math.floor(nm / 60) !== +nl.closest('.dg-row').dataset.h) { render(); return; } nl.style.left = ((nm % 60) / 60 * 100) + '%'; }
     renderNav();
   }
 }
