@@ -139,6 +139,9 @@ t('applyOp: editTemplate days/name + template block rename', () => {
   assert(X.applyOp(c, s, { type: 'editTemplateBlock', tpl: 'Workday', title: 'Lights out', newTitle: 'Blackout' }, TODAY).cfg);
   assert(X.buildDay(c, '2026-10-05').blocks.some(b => b.title === 'Blackout'));
   assert(X.applyOp(c, s, { type: 'editTemplate', tpl: 'Nope', days: [] }, TODAY).error);
+  assert(X.applyOp(c, s, { type: 'removeTemplateBlock', tpl: 'Workday', title: 'Deep work' }, TODAY).cfg);
+  assert(!X.buildDay(c, '2026-10-05').blocks.some(b => b.title === 'Deep work'));
+  assert(X.applyOp(c, s, { type: 'removeTemplateBlock', tpl: 'Workday', title: 'Deep work' }, TODAY).error);
 });
 t('mergeCloud: live partial snapshot never pushes untouched data', () => {
   const l = { config: { updated: 5 }, days: { a: { updated: 10 }, b: { updated: 1 } } };

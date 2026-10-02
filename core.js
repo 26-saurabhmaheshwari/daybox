@@ -569,6 +569,14 @@ function applyOp(cfg, store, op, today) {
     t.version = (t.version || 1) + 1;
     return { cfg: true };
   }
+  if (op.type === 'removeTemplateBlock') {
+    const t = cfg.templates.find(x => !x.deleted && (x.id === op.tpl || norm(x.name) === norm(op.tpl)));
+    const n = t ? t.blocks.length : 0;
+    if (t) t.blocks = t.blocks.filter(x => norm(x.title) !== norm(op.title));
+    if (!t || t.blocks.length === n) return { error: 'template block "' + op.title + '" not found' };
+    t.version = (t.version || 1) + 1;
+    return { cfg: true };
+  }
   if (op.type === 'editTemplate') {
     const t = cfg.templates.find(x => !x.deleted && (x.id === op.tpl || norm(x.name) === norm(op.tpl)));
     if (!t) return { error: 'template "' + op.tpl + '" not found' };
