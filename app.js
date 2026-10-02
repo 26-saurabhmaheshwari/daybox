@@ -419,8 +419,9 @@ function fitHtml(d) {
   const todos = d.todo || [];
   const open = todos.filter(x => !x.done && !blockOf(d, x));
   const needMin = open.reduce((a, x) => a + (x.min || 30), 0);
-  let h = '<div class="fitbox"><div class="fb-h"><div><h3>To fit</h3><span class="fb-sub">' + durTxt(freeMin) + ' free</span></div>'
-    + (todos.length < FIT_MAX ? '<button type="button" class="fb-add" data-act="fitnew" title="Add a task" aria-label="Add a task">' + ic('plus') + '</button>' : '') + '</div>';
+  // two halves, each led by a vertical capsule: your tasks | Saarthi's suggestions
+  let h = '<div class="fb-cap">' + (todos.length < FIT_MAX ? '<button type="button" class="fb-add" data-act="fitnew" title="Add a task" aria-label="Add a task">' + ic('plus') + '</button>' : '')
+    + '<span class="fb-vt b">To fit</span><span class="fb-sep"></span><span class="fb-vt s">' + durTxt(freeMin) + ' free</span></div><div class="fb-list">';
   if (needMin > freeMin * (1 - s.buffer) && open.length) h += '<div class="fb-warn">' + durTxt(needMin) + ' to fit, only ' + durTxt(freeMin) + ' free. Keep what matters.</div>';
   h += todos.map(x => {
     const b = blockOf(d, x), done = x.done || (b && b.status === 'done'), c = catOf(CFG, x.cat);
@@ -436,18 +437,19 @@ function fitHtml(d) {
   const opsShown = ops.slice(0, slots);
   const titles = new Set(todos.map(x => norm(x.title)));
   SUGS = big && slots > opsShown.length ? X.suggest(CFG, STORE, TF, d.date, big, t, 8).filter(x => !hide.includes(x.item.id) && !titles.has(norm(x.item.title))).slice(0, slots - opsShown.length).map(x => Object.assign(x, { gap: big })) : [];
+  let sa = '';
   if (opsShown.length || SUGS.length) {
-    h += '<div class="fb-sec">' + ic('saarthi', 's-ic') + 'Saarthi suggests</div>';
-    h += opsShown.map(({ o, i }) => { const isB = o.op.type === 'addBlock'; const c = catOf(CFG, isB ? o.op.block.cat : 'goal');
+    sa += opsShown.map(({ o, i }) => { const isB = o.op.type === 'addBlock'; const c = catOf(CFG, isB ? o.op.block.cat : 'goal');
       return taskCard({ cls: 'sug', drag: isB ? 'op:' + i : '', label: isB ? o.op.block.title : o.label, c, title: isB ? o.op.block.title : o.label, dur: isB ? o.op.block.dur || 30 : 0,
         tip: o.why || '',
         right: '<button type="button" class="tc-ok" data-act="opfit" data-i="' + i + '" title="Accept" aria-label="Accept">' + ic('check') + '</button><button type="button" class="tc-x" data-act="oprej" data-i="' + i + '" aria-label="Reject">×</button>' }); }).join('');
-    h += SUGS.map((sg, i) => taskCard({ cls: 'sug', drag: 'sug:' + i, label: sg.item.title, c: catOf(CFG, sg.item.cat), title: sg.item.title, dur: sg.min,
+    sa += SUGS.map((sg, i) => taskCard({ cls: 'sug', drag: 'sug:' + i, label: sg.item.title, c: catOf(CFG, sg.item.cat), title: sg.item.title, dur: sg.min,
       tip: sg.why,
       right: '<button type="button" class="tc-ok" data-act="sugacc" data-i="' + i + '" title="Accept" aria-label="Accept">' + ic('check') + '</button><button type="button" class="tc-x" data-act="sughide" data-id="' + esc(sg.item.id) + '" aria-label="Not today">×</button>' })).join('');
   }
   if (todos.some(x => !x.done && !blockOf(d, x)) || SUGS.length || opsShown.length) h += '<div class="fb-note">Drag a task onto the clock to give it a time.</div>';
-  return h + '</div>';
+  const right = sa ? '<div class="fb-half"><div class="fb-cap sa"><span class="fb-vt b">Saarthi</span></div><div class="fb-list">' + sa + '</div></div>' : '';
+  return '<div class="fitbox' + (sa ? ' split' : '') + '"><div class="fb-half">' + h + '</div></div>' + right + '</div>';
 }
 function fitItem(key) {
   const d = AG_DAY; if (!d) return null;
