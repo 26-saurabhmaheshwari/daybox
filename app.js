@@ -132,7 +132,7 @@ const IC = {
 const ic = (n, cls) => '<svg class="' + (cls || '') + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + IC[n] + '</svg>';
 
 const VIEWS = [
-  { id: 'today', name: 'Today', ic: 'today' }, { id: 'week', name: 'Week', ic: 'week' }, { id: 'plan', name: 'Thursday plan', ic: 'plan' },
+  { id: 'today', name: 'Today', ic: 'today' }, { id: 'week', name: 'Week', ic: 'week' }, { id: 'plan', name: 'Week plan', ic: 'plan' },
   { id: 'bank', name: 'Bank', ic: 'bank' }, { id: 'routine', name: 'Routine', ic: 'routine' }, { id: 'insights', name: 'Insights', ic: 'insights' },
   { id: 'saarthi', name: 'Saarthi', ic: 'saarthi' }, { id: 'settings', name: 'Settings', ic: 'settings' },
 ];
@@ -178,9 +178,9 @@ function renderNav() {
 }
 function renderSync() {
   const el = $('#syncBox'); if (!el) return;
-  const map = { local: ['', 'On this device only. Sign in to sync.'], loading: ['', 'Loading your data...'], saving: ['ok', 'Saving...'], ok: ['ok', 'Synced' + (AUTH.email ? ' · ' + AUTH.email : '')], err: ['err', 'Sync problem: ' + SYNC.msg] };
+  const map = { local: ['', 'On this device only. Sign in to sync.'], loading: ['', 'Loading your data...'], saving: ['ok', 'Saving...'], ok: ['ok', 'Synced'], err: ['err', 'Sync problem: ' + SYNC.msg] };
   const [cls, txt] = map[SYNC.state] || map.local;
-  el.innerHTML = '<span class="dot ' + cls + '"></span>' + esc(txt) + (AUTH.signedIn ? '' : '<div style="margin-top:8px"><button class="btn sm" data-act="signin">Sign in with Google</button></div>');
+  el.innerHTML = '<span class="dot ' + cls + '"></span>' + esc(txt) + (AUTH.email ? '<span class="em" title="' + esc(AUTH.email) + '">' + esc(AUTH.email) + '</span>' : '') + (AUTH.signedIn ? '' : '<div style="margin-top:8px"><button class="btn sm" data-act="signin">Sign in with Google</button></div>');
 }
 function render() {
   applyTheme(); renderNav();
@@ -513,24 +513,36 @@ function cellBlock(blocks, m) {
   return bo > 0 ? best : null;
 }
 // every half hour of the day -> the block that fills it, plus a renderer for one cell (span 2 = both halves merged)
-function cellFactory(d, big) {
+// join: the cell above/below in the same day part holds the same block (Today cards), so the corners square off
+function cellFactory(d, big, join) {
   const t = today(), nm = nowMin(), byMin = {}, seen = new Set();
   for (let m = 0; m < 1440; m += 30) { const b = cellBlock(d.blocks, m); byMin[m] = { b, first: !!b && !seen.has(b.id) }; if (b) seen.add(b.id); }
   // span: 2 when one block fills both halves of the hour (cells merge into one wide bar)
   const cell = (m, pm, span) => {
-    const x = byMin[m], b = x.b, isNow = d.date === t && nm >= m && nm < m + 30 * (span || 1);
-    const cls = 'ck-c' + (pm ? ' pm' : '') + (isNow ? ' now' : '') + (span === 2 ? ' span2' : '');
-    if (!b) return '<div class="' + cls + ' empty" data-m="' + m + '"></div>';
+    const x = byMin[m], b = x.b, S = 30 * (span || 1), isNow = d.date === t && nm >= m && nm < m + S;
+    const nl = isNow ? '<b class="ck-nl" style="left:' + Math.round((nm - m) / S * 100) + '%"></b>' : '';
+    let cls = 'ck-c' + (pm ? ' pm' : '') + (isNow ? ' now' : '') + (span === 2 ? ' span2' : '');
+    if (!b) return '<div class="' + cls + ' empty' + (d.date < t || (d.date === t && m + 30 <= nm) ? ' gone' : '') + '" data-m="' + m + '">' + nl + '</div>';
     const st = blkState(d, b, nm, t), c = catOf(CFG, b.cat);
     const locked = isMarked(b) && !UNLOCKED.has(b.id);
     const drag = big && !locked && !b.pillar && (st === 'up' || st === 'now' || st === 'mark');
-    let inner = '';
-    if (x.first) {
-      inner = '<span class="ck-t">' + esc(b.title) + '</span>' + (big ? '<span class="ck-m">' + hm(b.start) + '</span>' : '');
-    } else if (big) inner = '<span class="ck-t cont">↳ ' + esc(b.title) + '</span>';
-    if (big && (st === 'done' || st === 'mark')) inner += '<i class="ck-i">' + (st === 'done' ? '✓' : '!') + '</i>';
-    return '<div class="' + cls + ' st-' + st + (x.first ? ' first' : '') + (drag ? ' drag' : '') + '" data-m="' + m + '" data-id="' + b.id + '" style="--k:' + c.color + '"'
-      + (drag ? ' data-drag="blk:' + b.id + '" data-label="' + esc(b.title) + '"' : '') + ' title="' + esc(b.title) + ' ' + hm(b.start) + '–' + hm(b.start + b.dur) + '">' + inner + '</div>';
+    let inner = '', sty = '--k:' + c.color;
+    // a half-hour cell has no room for the time: it stays in the tooltip
+    if (x.first) inner = '<span class="ck-t">' + esc(b.title) + '</span>' + (big && span === 2 ? '<span class="ck-m">' + hm(b.start) + '</span>' : '');
+    else { cls += ' cont'; if (big) inner = '<span class="ck-t cont">' + esc(b.title) + '</span>'; }
+    if (big && x.first && (st === 'done' || st === 'mark')) inner += '<i class="ck-i">' + (st === 'done' ? '✓' : '!') + '</i>';
+    if (join) {
+      const same = k => k >= 0 && k < 1440 && Math.floor(k / 360) === Math.floor(m / 360) && byMin[k].b === b;
+      if (same(m - 60) || (span === 2 && same(m - 30))) cls += ' jt';
+      if (same(m + 60) || (span === 2 && same(m + 90))) cls += ' jb';
+    }
+    // a block that starts or ends 5+ min inside the cell only fills its real part
+    if (big) {
+      const a = Math.max(b.start, m) - m, z = m + S - Math.min(b.start + b.dur, m + S);
+      if (a >= 5 || z >= 5) { cls += ' cut'; sty += ';--cl:' + (a >= 5 ? Math.round(a / S * 100) : 0) + '%;--cr:' + (z >= 5 ? Math.round(z / S * 100) : 0) + '%'; }
+    }
+    return '<div class="' + cls + ' st-' + st + (x.first ? ' first' : '') + (drag ? ' drag' : '') + '" data-m="' + m + '" data-id="' + b.id + '" style="' + sty + '"'
+      + (drag ? ' data-drag="blk:' + b.id + '" data-label="' + esc(b.title) + '"' : '') + ' title="' + esc(b.title) + ' ' + hm(b.start) + '–' + hm(b.start + b.dur) + '">' + inner + nl + '</div>';
   };
   const pair = (m0, pm) => { const b0 = byMin[m0].b; return b0 && b0 === byMin[m0 + 30].b ? cell(m0, pm, 2) : cell(m0, pm) + cell(m0 + 30, false); };
   return { byMin, cell, pair };
@@ -549,16 +561,18 @@ function clockHtml(d, big) {
 const DAY_PARTS = [['Morning', 6, 12, 'am'], ['Afternoon', 12, 18, 'pm'], ['Evening', 18, 24, 'ev']];
 const h12 = h => (h % 12) || 12;
 function partsHtml(d) {
-  const { pair } = cellFactory(d, true), nm = nowMin(), isT = d.date === today();
+  const { pair } = cellFactory(d, true, true), nm = nowMin(), isT = d.date === today();
   return '<div class="parts">' + DAY_PARTS.map(([name, h0, h1, k]) => {
     const now = isT && nm >= h0 * 60 && nm < h1 * 60;
-    let g = '<div class="part ' + k + (now ? ' now' : '') + '"><div class="pt-h"><b>' + name + '</b><span>' + h12(h0) + (h0 < 12 ? 'am' : 'pm') + ' – ' + h12(h1) + (h1 < 12 || h1 === 24 ? 'am' : 'pm') + '</span></div>'
+    // 24h everywhere, same as the times on the blocks
+    let g = '<div class="part ' + k + (now ? ' now' : '') + '"><div class="pt-h"><b>' + name + '</b><span>' + pad(h0) + ':00 – ' + pad(h1) + ':00</span></div>'
       + '<div class="pt-g"><span></span><span class="ck-h">:00</span><span class="ck-h">:30</span>';
-    for (let h = h0; h < h1; h++) g += '<span class="ck-r">' + h12(h) + '</span>' + pair(h * 60, false);
+    for (let h = h0; h < h1; h++) g += '<span class="ck-r">' + h + '</span>' + pair(h * 60, false);
     return g + '</div></div>';
   }).join('') + '</div>';
 }
-function clockLegend() { return '<div class="legend"><span class="chip nx">Upcoming</span><span class="chip mk">To mark</span><span class="chip dn">Done</span><span class="chip sk">Skipped</span></div>'; }
+// state is shown by pattern, never by colour (colour is the category)
+function clockLegend() { return '<div class="legend">' + [['up', 'Upcoming'], ['mk', 'To mark'], ['dn', 'Done'], ['sk', 'Skipped']].map(([k, n]) => '<span class="lg"><i class="lg-' + k + '"></i>' + n + '</span>').join('') + '</div>'; }
 // tapping a cell: marked blocks open a summary (locked), unmarked past ones a quick Done/Skip, the rest the editor; empty cells add a block
 function tapCell(d, el) {
   const s = CFG.settings, t = today();
@@ -639,8 +653,9 @@ function nowBarHtml(d, stats) {
   else if (cur) { title = esc(cur.title); from = cur.start; to = cur.start + cur.dur; left = durTxt(to - nm) + ' left'; }
   else { label = 'FREE NOW'; title = next ? 'Until ' + esc(next.title) : 'Until bedtime'; from = nm; to = next ? next.start : s.bedtime; left = durTxt(to - nm); }
   const pct = clamp(Math.round((nm - from) / Math.max(1, to - from) * 100), 0, 100);
-  return '<div class="nowcard" id="nowbar"><div class="nc-main"><div class="nc-l">' + label + '</div><div class="nc-t">' + title + '</div></div>'
-    + '<div class="nc-bar"><div class="nc-track"><i style="width:' + (cur ? pct : 0) + '%"></i></div><div class="nc-times"><span>' + hm(from) + '</span><span>' + left + '</span><span>' + hm(to) + '</span></div></div>'
+  // free: the "free" stat already says how long, so the bar shows only from / to
+  return '<div class="nowcard" id="nowbar"><div class="nc-main"><span class="nc-l">' + label + '</span><span class="nc-t">' + title + '</span></div>'
+    + '<div class="nc-bar"><div class="nc-track"><i style="width:' + (cur ? pct : 0) + '%"></i></div><div class="nc-times"><span>' + hm(from) + '</span>' + (label === 'FREE NOW' ? '' : '<span>' + left + '</span>') + '<span>' + hm(to) + '</span></div></div>'
     + '<div class="nc-stats">' + (stats || '') + '</div><button class="nc-btn" data-act="bored">Bored?</button></div>';
 }
 function openAddTask() {
@@ -669,7 +684,7 @@ function viewToday() {
   const twice = CUR <= t ? X.missedYesterday(STORE, CFG, CUR) : new Set();
   const pc = X.principleChecks(CFG, d, twice);
   const sc = statusCounts(d);
-  const free = X.gaps(d.blocks, isToday ? Math.max(s.dayStart, nm) : s.dayStart, s.bedtime, 15).reduce((a, g) => a + g.end - g.start, 0);
+  const free = X.gaps(d.blocks, fitFrom(d), s.bedtime, 15).reduce((a, g) => a + g.end - g.start, 0);
   const pil = X.dayStats(CFG, d);
   const yday = DAYS[addDays(CUR, -1)];
   // one date with arrows, and a green bar of the same width: blocks done out of the day's blocks
@@ -736,7 +751,7 @@ function viewWeek() {
   const end = addDays(WEEK, 6);
   return {
     title: 'Week', sub: fmtShort(WEEK) + ' – ' + fmtShort(end),
-    actions: '<button class="iconbtn" data-act="wprev" aria-label="Previous week">' + ic('left') + '</button><button class="iconbtn" data-act="wnext" aria-label="Next week">' + ic('right') + '</button>' + (WEEK === weekStart(t) ? '' : '<button class="btn" data-act="wtoday">This week</button>') + '<button class="btn" data-act="nav" data-v="plan">' + ic('plan') + 'Thursday plan</button>',
+    actions: '<button class="iconbtn" data-act="wprev" aria-label="Previous week">' + ic('left') + '</button><button class="iconbtn" data-act="wnext" aria-label="Next week">' + ic('right') + '</button>' + (WEEK === weekStart(t) ? '' : '<button class="btn" data-act="wtoday">This week</button>') + '<button class="btn" data-act="nav" data-v="plan">' + ic('plan') + 'Week plan</button>',
     body, after() { bindDrag(); },
   };
 }
@@ -763,7 +778,7 @@ function viewPlan() {
     + '<datalist id="pDreams">' + dreams.map(i => '<option value="' + esc(i.title) + '">').join('') + '</datalist>' + rows
     + '<div class="row" style="margin-top:14px"><button class="btn pri" data-act="plansave">Add to the week</button><span class="muted small">Blocks show up in the week. Days you already changed get them added too.</span></div>';
   return {
-    title: 'Thursday plan', sub: 'week of ' + fmtShort(ws),
+    title: 'Week plan', sub: 'week of ' + fmtShort(ws),
     actions: '<div class="seg"><button class="' + (ws === thisWs ? 'on' : '') + '" data-act="planws" data-ws="' + thisWs + '">This week</button><button class="' + (ws === addDays(thisWs, 7) ? 'on' : '') + '" data-act="planws" data-ws="' + addDays(thisWs, 7) + '">Next week</button></div>',
     body,
   };
