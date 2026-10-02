@@ -1190,6 +1190,31 @@ async function decideOp(i, accept) {
 
 /* ---------- settings ---------- */
 let CAT_DEL = null, TYPE_DEL = null; // category / type waiting for delete confirm
+/* honeycomb colour picker: rings of hexagons round a white centre; each ring is one shade (light inside, deep outside),
+   going round a ring walks the hues. A grey row below. */
+const hslHex = (h, s, l) => { s /= 100; l /= 100; const k = n => (n + h / 30) % 12, a = s * Math.min(l, 1 - l), f = n => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1)); return '#' + [f(0), f(8), f(4)].map(x => Math.round(x * 255).toString(16).padStart(2, '0')).join('').toUpperCase(); };
+function hexPicker(cur, onPick, title) {
+  const N = 6, R = 13, W = Math.sqrt(3) * R, L = [100, 86, 74, 62, 52, 42, 32], cells = [];
+  for (let q = -N; q <= N; q++) for (let r = Math.max(-N, -q - N); r <= Math.min(N, -q + N); r++) {
+    const x = W * (q + r / 2), y = 1.5 * R * r, d = Math.max(Math.abs(q), Math.abs(r), Math.abs(q + r));
+    const hue = (Math.atan2(y, x) * 180 / Math.PI + 450) % 360;
+    cells.push({ x, y, c: d ? hslHex(hue, d >= 5 ? 85 : 92, L[d]) : '#FFFFFF' });
+  }
+  const greys = [0, 12, 24, 36, 48, 60, 72, 84, 94].map(l => hslHex(0, 0, l)).concat('#64748B', '#334155');
+  const pts = (x, y, r) => [0, 1, 2, 3, 4, 5].map(i => { const a = Math.PI / 180 * (60 * i - 30); return (x + r * Math.cos(a)).toFixed(1) + ',' + (y + r * Math.sin(a)).toFixed(1); }).join(' ');
+  const box = W * (N + 0.5) + 4, gy = 1.5 * R * N + R + 18, up = String(cur || '').toUpperCase();
+  const svg = '<svg viewBox="' + (-box) + ' ' + (-box) + ' ' + (2 * box) + ' ' + (2 * box + 34) + '" class="hexsvg" role="listbox" aria-label="Colours">'
+    + cells.map(o => '<polygon points="' + pts(o.x, o.y, R - 0.6) + '" fill="' + o.c + '" data-c="' + o.c + '"' + (o.c === up ? ' class="on"' : '') + '><title>' + o.c + '</title></polygon>').join('')
+    + greys.map((c, i) => { const x = (i - (greys.length - 1) / 2) * (W + 1); return '<polygon points="' + pts(x, gy, R - 0.6) + '" fill="' + c + '" data-c="' + c + '"' + (c === up ? ' class="on"' : '') + '><title>' + c + '</title></polygon>'; }).join('')
+    + '</svg>';
+  openSheet('<div class="sh-h"><h2>' + esc(title || 'Colour') + '</h2><button class="iconbtn" data-x aria-label="Close">×</button></div>'
+    + '<div class="hexpick">' + svg + '</div><div class="row" style="justify-content:space-between;margin-top:8px"><span class="row"><span class="swatch big" id="hxNow" style="--c:' + esc(cur || '#888') + '"></span><span class="mono small" id="hxTxt">' + esc(up) + '</span></span>'
+    + '<label class="btn sm">Custom…<input type="color" id="hxCustom" value="' + esc(cur || '#888888') + '" hidden></label></div>',
+    sh => {
+      $$('[data-c]', sh).forEach(p => { p.onclick = () => { onPick(p.dataset.c); closeSheet(); }; p.onmouseenter = () => { $('#hxNow', sh).style.setProperty('--c', p.dataset.c); $('#hxTxt', sh).textContent = p.dataset.c; }; });
+      $('#hxCustom', sh).onchange = e => { onPick(e.target.value.toUpperCase()); closeSheet(); };
+    });
+}
 function typeOptions(sel) { return X.liveTypes(CFG).map(t => '<option value="' + t.id + '"' + (t.id === sel ? ' selected' : '') + '>' + esc(t.name) + '</option>').join(''); }
 function typeCard() {
   const types = X.liveTypes(CFG);
@@ -1208,7 +1233,7 @@ function typeCard() {
 function catCard() {
   const cats = X.liveCats(CFG), types = X.liveTypes(CFG);
   const row = c => {
-    let h = '<div class="li cat" data-cat="' + c.id + '"><input type="color" value="' + c.color + '" data-f="color" aria-label="Colour"><input type="text" value="' + esc(c.name) + '" data-f="name" aria-label="Name"><select data-f="type" aria-label="Type">' + typeOptions(c.type) + '</select>'
+    let h = '<div class="li cat" data-cat="' + c.id + '"><button type="button" class="swatch" data-catcolor="' + c.id + '" style="--c:' + c.color + '" aria-label="Colour of ' + esc(c.name) + '" title="Change colour"></button><input type="text" value="' + esc(c.name) + '" data-f="name" aria-label="Name"><select data-f="type" aria-label="Type">' + typeOptions(c.type) + '</select>'
       + (cats.length > 1 ? '<button type="button" class="btn ghost sm" data-catdel="' + c.id + '" aria-label="Delete ' + esc(c.name) + '" title="Delete">×</button>' : '<span></span>') + '</div>';
     if (CAT_DEL !== c.id) return h;
     const u = X.catUse(CFG, c.id), used = u.rules + u.items;
@@ -1255,6 +1280,7 @@ function viewSettings() {
       });
       $$('[data-cat]').forEach(li => { li.onchange = e => { const f = e.target.dataset.f; if (!f) return; const c = CFG.cats.find(x => x.id === li.dataset.cat); c[f] = f === 'name' ? (e.target.value.trim() || c.name) : e.target.value; saveCfg(); if (f === 'type') render(); }; });
       $$('[data-catdel]').forEach(b => { b.onclick = () => { CAT_DEL = b.dataset.catdel; render(); }; });
+      $$('[data-catcolor]').forEach(b => { b.onclick = () => { const c = CFG.cats.find(x => x.id === b.dataset.catcolor); hexPicker(c.color, col => { c.color = col; saveCfg(); render(); }, 'Colour for ' + c.name); }; });
       if ($('#catNo')) $('#catNo').onclick = () => { CAT_DEL = null; render(); };
       if ($('#catYes')) $('#catYes').onclick = () => { const to = $('#catTo') ? $('#catTo').value : null; if (X.deleteCat(CFG, CAT_DEL, to)) { CAT_DEL = null; saveCfg(); render(); } };
       $('#catAdd').onclick = () => { const n = $('#catNew').value.trim(); if (!n) { $('#catNew').focus(); return; } X.addCat(CFG, n, $('#catNewT').value); saveCfg(); render(); };

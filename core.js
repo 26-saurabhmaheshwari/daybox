@@ -162,7 +162,7 @@ const isSleep = (cfg, id) => catOf(cfg, id).type === 'sleep';
 const isWaste = (cfg, id) => id === 'waster';
 // your free-time mix: every category you gave a balance share
 const freeCats = cfg => liveCats(cfg).filter(c => +((cfg.settings.balance || {})[c.id]) > 0).map(c => c.id);
-const CAT_COLORS = ['#2F7BF5', '#F07A1A', '#7B5CFA', '#E6A100', '#09A6C9', '#1FAE5B', '#E54C9A', '#C2185B', '#6E7A91'];
+const CAT_COLORS = ['#2563EB', '#EC4899', '#EAB308', '#0EA5E9', '#10B981', '#A855F7', '#F97316', '#84CC16', '#6366F1', '#14B8A6', '#EF4444', '#64748B'];
 function addCat(cfg, name, type) {
   const used = new Set(liveCats(cfg).map(c => String(c.color).toUpperCase()));
   const c = { id: 'c_' + uid(), name: String(name || 'New category').trim() || 'New category', color: CAT_COLORS.find(x => !used.has(x)) || '#888888', type: liveTypes(cfg).some(t => t.id === type) ? type : 'nongoal' };
@@ -969,6 +969,14 @@ function applyOp(cfg, store, op, today) {
     const mr = makeRoom(cfg, Object.assign({}, r, op.patch || {}), r.id, today);
     if (mr.error) return mr;
     editRule(cfg, r.id, op.patch || {}, today);
+    return { cfg: true };
+  }
+  if (op.type === 'editCat') { // a category's name or colour
+    const c = cfg.cats.find(x => x.id === op.id && !x.deleted);
+    if (!c) return { error: 'category ' + op.id + ' not found' };
+    const p = op.patch || {};
+    if (p.color != null) { if (!/^#[0-9a-f]{6}$/i.test(p.color)) return { error: 'colour must be #RRGGBB' }; c.color = p.color.toUpperCase(); }
+    if (p.name) c.name = String(p.name).trim();
     return { cfg: true };
   }
   if (op.type === 'setChunk' || op.type === 'setNugget') { // a Tenfold nugget: chunk (minutes per sitting), via (a routine block that already does it, '' clears)

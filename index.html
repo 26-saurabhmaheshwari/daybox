@@ -424,6 +424,13 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 .wd-cat{font-size:.7rem;color:var(--faint,var(--muted));margin-top:3px}
 .fb-fill{display:flex;flex-direction:column;gap:8px;align-items:flex-start;justify-content:center}
 .op.off{opacity:.5}
+.swatch{width:28px;height:28px;border-radius:8px;border:2px solid var(--surface);box-shadow:0 0 0 1px var(--line);background:var(--c);cursor:pointer;padding:0;flex:none}
+.swatch.big{width:34px;height:34px;cursor:default}
+.hexpick{display:flex;justify-content:center}
+.hexsvg{width:min(100%,380px);height:auto}
+.hexsvg polygon{cursor:pointer;stroke:var(--surface);stroke-width:1.2;transition:transform .08s;transform-box:fill-box;transform-origin:center}
+.hexsvg polygon:hover{stroke:var(--ink,#111);stroke-width:2;transform:scale(1.12)}
+.hexsvg polygon.on{stroke:var(--ink,#111);stroke-width:2.6}
 .pv-day{margin:4px 0 12px}.pv-h{font-weight:700;font-size:.84rem;margin-bottom:4px}
 .pv-cols{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .pv-t{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:2px}
@@ -635,7 +642,7 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 <div id="ov" hidden><div id="sheet" role="dialog" aria-modal="true"></div></div>
 <div id="toast" hidden></div>
 <div id="printArea"></div>
-<script src="core.js?v=85"></script>
-<script src="app.js?v=85"></script>
+<script src="core.js?v=86"></script>
+<script src="app.js?v=86"></script>
 </body>
 </html>
