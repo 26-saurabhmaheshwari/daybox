@@ -330,6 +330,12 @@ t('ideas: "Tue: Paint" is fixed on Tuesdays, plain ones rotate on the rest', () 
     if (d === 2) assert.strictEqual(v, 'Paint'); else if (d === 3) assert.strictEqual(v, 'Garden'); else assert(['Story', 'Play'].includes(v), v);
   }
 });
+t('report: by activity counts done minutes and times, partial half, sleep left out', () => {
+  const m = X.seedConfig(); const k = X.addDays(TODAY, -1);
+  const st = { days: { [k]: { date: k, blocks: [{ id: 'a', start: 600, dur: 60, title: 'Gardening', cat: 'hobby', status: 'done' }, { id: 'b', start: 900, dur: 60, title: 'gardening', cat: 'hobby', status: 'partial' }, { id: 'c', start: 1350, dur: 60, title: 'Lights out', cat: 'sleep', status: 'done' }] } } };
+  const r = X.rangeReport(m, st, k, k);
+  assert.strictEqual(r.byActivity.length, 1); assert.strictEqual(r.byActivity[0].min, 90); assert.strictEqual(r.byActivity[0].n, 2);
+});
 t('my-routine.json loads', () => {
   if (!fs.existsSync(__dirname + '/my-routine.json')) return;
   const o = JSON.parse(read('my-routine.json')); const m = X.mergeConfig(o.config);

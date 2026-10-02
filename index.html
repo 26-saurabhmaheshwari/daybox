@@ -401,6 +401,12 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 .cat-grp{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:10px 0 0}
 .li.cat input[type=text]{min-width:0}
 .li.cat.add{border-top:1px dashed var(--line2);border-bottom:0;margin-top:4px}
+.pie-wrap{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+.pie{width:150px;height:150px;border-radius:50%;position:relative;flex:none}
+.pie::after{content:'';position:absolute;inset:28%;border-radius:50%;background:var(--surface)}
+.pie span{position:absolute;inset:0;display:grid;place-items:center;z-index:1;font-weight:800;font-size:.9rem}
+.pie-leg{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1}
+.pie-leg>div{display:grid;grid-template-columns:minmax(0,1fr) 40px 60px;gap:8px;align-items:center}
 .pv-day{margin:4px 0 12px}.pv-h{font-weight:700;font-size:.84rem;margin-bottom:4px}
 .pv-cols{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .pv-t{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:2px}
@@ -612,7 +618,7 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 <div id="ov" hidden><div id="sheet" role="dialog" aria-modal="true"></div></div>
 <div id="toast" hidden></div>
 <div id="printArea"></div>
-<script src="core.js?v=79"></script>
-<script src="app.js?v=79"></script>
+<script src="core.js?v=80"></script>
+<script src="app.js?v=80"></script>
 </body>
 </html>

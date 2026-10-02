@@ -1067,6 +1067,19 @@ function viewInsights() {
     body += '<div class="card" style="margin-top:14px"><h3>By type</h3><div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Type</th><th>Planned</th><th>Done</th><th>Per day</th><th>Share of done</th></tr></thead><tbody>'
       + tRows.map(x => { const v = rep.byType[x.id]; return '<tr><td style="text-align:left"><b>' + esc(x.name) + '</b></td><td>' + hrs(v.planned) + 'h</td><td>' + hrs(v.actual) + 'h</td><td>' + durTxt(v.actual / n) + '</td><td>' + Math.round(v.actual / doneAll * 100) + '%</td></tr>'; }).join('')
       + '</tbody></table></div><p class="hint" style="margin:8px 0 0">A category counts under the type it has now.</p></div>';
+    // where the done time went, as a donut (Sleep left out), and every activity by name
+    const pieCats = CFG.cats.filter(c => rep.actual[c.id] && !X.isSleep(CFG, c.id)).sort((a, b) => rep.actual[b.id] - rep.actual[a.id]);
+    const pieSum = pieCats.reduce((a, c) => a + rep.actual[c.id], 0);
+    let acc = 0;
+    const grad = pieCats.map(c => { const a0 = acc / pieSum * 100; acc += rep.actual[c.id]; return c.color + ' ' + a0.toFixed(2) + '% ' + (acc / pieSum * 100).toFixed(2) + '%'; }).join(', ');
+    body += '<div class="cols2" style="margin-top:14px"><div class="card"><h3>Done time by category</h3>'
+      + (pieSum ? '<div class="pie-wrap"><div class="pie" style="background:conic-gradient(' + grad + ')"><span>' + durTxt(pieSum) + '</span></div><div class="pie-leg">'
+        + pieCats.map(c => '<div><span class="chip" style="--c:' + c.color + '"><i></i>' + esc(c.name) + '</span><b>' + Math.round(rep.actual[c.id] / pieSum * 100) + '%</b><span class="muted small">' + durTxt(rep.actual[c.id]) + '</span></div>').join('') + '</div></div>'
+        : '<div class="empty">Nothing marked done in this range yet.</div>')
+      + '<p class="hint" style="margin:8px 0 0">Done counts full, partial counts half. Sleep is left out.</p></div>'
+      + '<div class="card"><h3>By activity</h3>' + (rep.byActivity.length ? '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Activity</th><th>Done</th><th>Times</th></tr></thead><tbody>'
+        + rep.byActivity.slice(0, 20).map(x => { const c = catOf(CFG, x.cat); return '<tr><td style="text-align:left"><span class="chip" style="--c:' + c.color + '"><i></i>' + esc(x.title) + '</span></td><td>' + durTxt(x.min) + '</td><td>' + x.n + '</td></tr>'; }).join('')
+        + '</tbody></table></div>' + (rep.byActivity.length > 20 ? '<p class="hint" style="margin:8px 0 0">Top 20 of ' + rep.byActivity.length + '.</p>' : '') : '<div class="empty">Nothing marked done in this range yet.</div>') + '</div></div>';
     body += '<div class="cols2" style="margin-top:14px"><div class="card"><h3>By category</h3><div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Category</th><th>Planned</th><th>Done</th><th>Per day</th></tr></thead><tbody>'
       + CFG.cats.filter(c => rep.planned[c.id] || rep.actual[c.id]).map(c => '<tr><td><span class="chip" style="--c:' + c.color + '"><i></i>' + esc(c.name) + '</span></td><td>' + hrs(rep.planned[c.id] || 0) + 'h</td><td>' + hrs(rep.actual[c.id] || 0) + 'h</td><td>' + durTxt((rep.actual[c.id] || 0) / n) + '</td></tr>').join('')
       + '</tbody></table></div><p class="hint" style="margin:8px 0 0">' + n + ' tracked days · plan kept ' + fmtVal(rep.keptPct, 'pct') + ' · pillars kept ' + fmtVal(rep.pillarPct, 'pct') + ' · closed ' + rep.closedDays + ' days</p></div>'
