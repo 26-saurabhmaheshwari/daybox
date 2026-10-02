@@ -580,12 +580,13 @@ function segHtml(b, sg, main, c, extra) {
   const past = c.date < t || (c.date === t && b.start + b.dur <= nm);
   const needs = past && b.status === 'planned' && !c.virtual && b.cat !== 'sleep';
   const marked = isMarked(b), doneLock = marked && !UNLOCKED.has(b.id);
-  const cls = ['ev', 'st-' + (b.status || 'planned'), sg.first ? 'first' : '', sg.last ? 'last' : '', b.pillar ? 'pillar' : '', doneLock ? 'done-lock' : '', extra || ''].join(' ');
+  const isNow = c.date === t && b.start <= nm && b.start + b.dur > nm && X.live(b);
+  const cls = ['ev', 'st-' + (b.status || 'planned'), sg.first ? 'first' : '', sg.last ? 'last' : '', b.pillar ? 'pillar' : '', needs ? 'needs' : '', isNow ? 'is-now' : '', doneLock ? 'done-lock' : '', extra || ''].join(' ');
   let inner = '';
   // every piece of a block that wraps across hours carries its name; the time sits on the main piece
   inner += '<span class="sg-t' + (sg.first ? '' : ' cont') + '">' + (sg.first ? '' : '↳ ') + (b.status === 'done' ? '<span class="ok">✓</span>' : '') + (b.pillar && sg.first ? ic('lock', 's-ic') : '') + (b.mit && sg.first ? '<span class="mit">★</span>' : '') + esc(b.title) + '</span>';
   if (main && sg.min >= 25) inner += '<span class="sg-m">' + hm(b.start) + '–' + hm(b.start + b.dur) + '</span>';
-  if (needs && sg.last) inner += '<i class="sg-q" title="How did it go?"></i>';
+  if (needs && sg.last) inner += '<i class="sg-q" title="Not marked yet. Tap to mark done or skipped.">?</i>';
   if (marked && sg.last) inner += doneLock ? '<button type="button" class="sg-unlock" title="Unlock to change" aria-label="Unlock to change">' + ic('lock') + '</button>' : '<span class="sg-unlock on" title="Unlocked for one change">' + ic('unlock') + '</span>';
   if (sg.last && !b.pillar && !doneLock && c.editable) inner += '<i class="sg-rz" title="Drag to change the length"></i>';
   return '<div class="' + cls + '" data-id="' + b.id + '" style="--c:' + cat.color + ';left:calc(' + sg.l + '% + 1px);width:calc(' + sg.w + '% - 2px)" title="' + esc(b.title) + ' ' + hm(b.start) + '–' + hm(b.start + b.dur) + '">' + inner + '</div>';
@@ -600,7 +601,8 @@ function dayGridHtml(c) {
   rows.forEach(h => { by[h] = []; });
   c.blocks.forEach(b => blockSegs(b, c).forEach(x => { if (by[x.h]) by[x.h].push(x.html); }));
   const nowH = c.date === t ? Math.floor(nm / 60) : -1;
-  return '<div class="dg" style="--rowh:' + ROW_H + 'px"><div class="dg-head"><span></span><div class="dg-scale"><span style="left:0">:00</span><span style="left:50%">:30</span></div></div>'
+  const legend = '<div class="dg-legend"><span><i class="lg up"></i>upcoming</span><span><i class="lg nd"></i>to mark</span><span><i class="lg dn"></i>done</span><span><i class="lg sk"></i>skipped</span></div>';
+  return '<div class="dg" style="--rowh:' + ROW_H + 'px"><div class="dg-head"><span></span><div class="dg-scale"><span style="left:0">:00</span><span style="left:50%">:30</span>' + legend + '</div></div>'
     + rows.map(h => '<div class="dg-row' + (h === nowH ? ' now' : '') + ((c.date < t || (c.date === t && (h + 1) * 60 <= nm)) ? ' past' : '') + '" data-h="' + h + '"><span class="dg-h">' + pad(h) + ':00</span><div class="dg-track">' + by[h].join('')
       + (h === nowH ? '<i class="dg-now" style="left:' + ((nm % 60) / 60 * 100) + '%"></i>' : '') + '</div></div>').join('') + '</div>';
 }
