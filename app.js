@@ -19,7 +19,9 @@ const LS_CFG = 'dbx_config_v1', LS_DAY = 'dbx_d_', LS_DIRTY = 'dbx_dirty_v1', LS
 const load = k => { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } };
 const put = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { toast('Browser storage is full. Export a backup.'); } };
 
-let CFG = X.mergeConfig(load(LS_CFG));
+const RAW0 = load(LS_CFG);
+const MIGRATED = !!(RAW0 && (RAW0.templates || []).some(t => !t.deleted));  // templates -> recurring blocks, saved once below
+let CFG = X.mergeConfig(RAW0);
 const DAYS = {};
 Object.keys(localStorage).filter(k => k.startsWith(LS_DAY)).forEach(k => { const d = load(k); if (d && d.date) DAYS[d.date] = d; });
 const STORE = { days: DAYS };
@@ -32,7 +34,6 @@ let CUR = today();
 let WEEK = weekStart(today());
 let PLAN_WS = null;
 let TAB = { bank: 'regular', routine: 'templates', insights: '7' };
-let TPL_EDIT = null;
 let SCROLL_NOW = true;
 let DRAGGING = false;
 let TIPS_OPEN = false, AG_DAY = null;
@@ -93,8 +94,9 @@ document.addEventListener('dbx-auth', e => {
   if (VIEW === 'settings' || VIEW === 'saarthi') render(); else renderNav();
 });
 document.addEventListener('dbx-cloud', e => {
+  const hadTpl = !!(e.detail && e.detail.config && (e.detail.config.templates || []).some(t => !t.deleted));
   const m = X.mergeCloud({ config: CFG, days: DAYS }, e.detail || {});
-  if (m.config !== CFG) { CFG = X.mergeConfig(m.config); put(LS_CFG, CFG); }
+  if (m.config !== CFG) { CFG = X.mergeConfig(m.config); put(LS_CFG, CFG); if (hadTpl) saveCfg(); }
   Object.keys(m.days).forEach(k => { if (DAYS[k] !== m.days[k]) { DAYS[k] = m.days[k]; put(LS_DAY + k, DAYS[k]); } });
   if (m.pushConfig) markDirty('cfg');
   m.pushDays.forEach(markDirty);
@@ -201,7 +203,7 @@ function blockHtml(b, L, c, mode, ppm) {
   const locked = b.pillar && mode !== 'tpl';
   const doneLock = mode !== 'tpl' && isMarked(b) && !UNLOCKED.has(b.id);
   const cls = ['blk', 'st-' + (b.status || 'planned'), needs ? 'needs' : '', twice ? 'twice' : '', locked ? 'locked' : '', doneLock ? 'done-lock' : '', mode !== 'tpl' && isMarked(b) && !doneLock ? 'unlocked' : ''].join(' ');
-  let inner = '<div class="b-t">' + (b.mit ? '<span title="MIT">★</span>' : '') + (locked ? ic('lock', 's-ic') : '') + '<span>' + esc(b.title) + '</span>' + (needs ? '<span class="q" title="How did it go?">?</span>' : '') + '</div>';
+  let inner = '<div class="b-t">' + (b.status === 'done' ? '<span class="ok">✓</span>' : '') + (b.mit ? '<span title="MIT">★</span>' : '') + (locked ? ic('lock', 's-ic') : '') + '<span>' + esc(b.title) + '</span>' + (needs ? '<span class="q" title="How did it go?">?</span>' : '') + '</div>';
   if (h >= 30) inner += '<div class="b-m">' + hm(b.start) + '–' + hm(b.start + b.dur) + ' · ' + durTxt(b.dur) + (b.pillar && b.backup != null && !b.strict ? ' · backup ' + hm(b.backup) : '') + '</div>';
   const att = X.attachObjs(b.attach);
   if (att.length && h >= 50 && mode !== 'week') inner += '<div class="b-a">' + att.map((a, ai) => '<label class="b-chk"><input type="checkbox" data-ai="' + ai + '"' + (a.done ? ' checked' : '') + (mode === 'tpl' || doneLock ? ' disabled' : '') + '>' + esc(a.t) + '</label>').join('') + '</div>';
@@ -337,15 +339,6 @@ const dayHandlers = {
   onAttach(c, b, ai, checked) { const d = c.day, x = d.blocks.find(y => y.id === b.id); x.attach = X.attachObjs(x.attach); x.attach[ai].done = checked; saveDay(d); },
   onHead(c) { CUR = c.date; setView('today'); },
 };
-function tplHandlers(tpl) {
-  return {
-    onCommit({ b, start, dur }) { const x = tpl.blocks.find(y => y.id === b.id); const cl = X.clashWith(tpl.blocks, { start, dur }, x.id); if (cl) { render(); return toast('Overlaps ' + clashTxt(cl) + '. Pick a free slot.'); } x.start = start; x.dur = dur; bumpTpl(tpl); render(); },
-    onOpen(c, b) { openBlock(null, b, null, tpl); },
-    onNew(c, start, dur) { openBlock(null, null, { start, dur: fitDur(tpl.blocks, start, dur) }, tpl); },
-    onGap() {}, onAttach() {},
-  };
-}
-function bumpTpl(t) { t.version = (t.version || 1) + 1; saveCfg(); }
 
 /* ---------- block editor ---------- */
 const DURS = [10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 75, 90, 105, 120, 150, 180, 240, 300];
@@ -356,7 +349,7 @@ function titleList() {
   if (TF) X.tfGoals(CFG, TF).forEach(g => s.add(g.name));
   return Array.from(s).map(t => '<option value="' + esc(t) + '">').join('');
 }
-function openBlock(d, b, preset, tpl) {
+function openBlock(d, b, preset) {
   const isNew = !b;
   const src = b || { title: '', cat: 'goal', start: preset.start, dur: preset.dur, attach: [], mit: false, pillar: false, backup: null, checks: false, status: 'planned' };
   const t = today();
@@ -365,9 +358,9 @@ function openBlock(d, b, preset, tpl) {
   const item = b && b.itemId ? CFG.items.find(i => i.id === b.itemId) : null;
   const bkAt = d && b && b.pillar && b.backup != null && !b.strict ? X.backupSlot(d, b, d.date === t ? nowMin() : 0) : null;
   const canBackup = bkAt != null && b.status !== 'moved' && !d.blocks.some(x => x.of === b.id);
-  const html = '<div class="sh-h"><h2>' + (isNew ? 'New block' : 'Edit block') + '</h2><span class="muted small">' + (d ? fmtShort(d.date) : esc(tpl.name) + ' template') + '</span><button class="iconbtn" data-x aria-label="Close">×</button></div>'
+  const html = '<div class="sh-h"><h2>' + (isNew ? 'New block' : 'Edit block') + '</h2><span class="muted small">' + fmtShort(d.date) + '</span><button class="iconbtn" data-x aria-label="Close">×</button></div>'
     + '<div class="form">'
-    + (b && b.src === 'rule' ? '<div class="hint">From your routine. Changes here change this day only. To change every day, edit it in Routine.</div>' : '')
+    + (b && b.src === 'rule' ? '<div class="hint">Repeats from your routine. Changes here change this day only.</div>' : '')
     + (b && b.pillar && d ? '<div class="hint">Pillar: locked on the grid so it does not move by accident.' + (b.strict ? ' Strict: no backup, a miss stays one miss.' : '') + '</div>' : '')
     + '<label class="field"><span>Title</span><input id="bTitle" type="text" list="bTitles" value="' + esc(src.title) + '" placeholder="What will you do?" autocomplete="off"></label><datalist id="bTitles">' + titleList() + '</datalist>'
     + '<div class="grid3"><label class="field"><span>Category</span><select id="bCat">' + catOptions(src.cat) + '</select></label>'
@@ -385,17 +378,25 @@ function openBlock(d, b, preset, tpl) {
     + (item && item.kind === 'dream' ? '<label class="check"><input id="bDream" type="checkbox"' + (item.done ? ' checked' : '') + '> Dream done, tick it off in the bank</label>' : '')
     + (isNew && d ? '<label class="check"><input id="bUnpl" type="checkbox"' + (lateNew ? ' checked' : '') + '> Unplanned (this is what really happened)</label>' : '')
     + '<div class="al alert" id="bErr" hidden></div>'
-    + '</div><div class="sh-f">' + (!isNew ? '<button class="btn danger l" data-del>Delete</button>' : '') + '<button class="btn" data-x>Cancel</button><button class="btn pri" data-save>Save</button></div>';
+    + '</div><div class="sh-f">' + (!isNew ? (b.src === 'rule' && b.ruleId ? '<button class="btn danger l" data-del>Remove this day only</button><button class="btn danger" data-stop>Stop repeating</button>' : '<button class="btn danger l" data-del>Delete</button>') : '') + '<button class="btn" data-x>Cancel</button><button class="btn pri" data-save>Save</button></div>';
   openSheet(html, sh => {
     let status = b ? b.status : 'planned';
     $('#bPillar', sh).onchange = e => { $('#bPillarRow', sh).hidden = !e.target.checked; };
     $$('[data-st]', sh).forEach(btn => { btn.onclick = () => { status = status === btn.dataset.st ? 'planned' : btn.dataset.st; $$('[data-st]', sh).forEach(x => x.classList.toggle('on', x.dataset.st === status)); }; });
     const bk = $('[data-backup]', sh);
     if (bk) bk.onclick = () => { const at = bkAt; X.useBackup(d, b.id, at); saveDay(d); closeSheet(); render(); toast(b.title + ' moved to backup ' + hm(at)); };
+    const stop = $('[data-stop]', sh);
+    if (stop) stop.onclick = () => {
+      const cfgBefore = clone(CFG), before = clone(d);
+      X.endRule(CFG, b.ruleId, d.date); saveCfg();
+      d.blocks = d.blocks.filter(x => x.id !== b.id); saveDay(d);
+      closeSheet(); render();
+      toast(b.title + ' stops repeating from ' + fmtShort(d.date) + '. Earlier days keep it.', 'Undo', () => { CFG = X.mergeConfig(cfgBefore); saveCfg(); saveDay(before); render(); }, 8000);
+    };
     const del = $('[data-del]', sh);
     if (del) del.onclick = () => {
-      if (tpl) { tpl.blocks = tpl.blocks.filter(x => x.id !== b.id); bumpTpl(tpl); }
-      else { const before = clone(d); d.blocks = d.blocks.filter(x => x.id !== b.id); saveDay(d); toast('Deleted ' + b.title, 'Undo', () => { saveDay(before); render(); }); }
+      const before = clone(d); d.blocks = d.blocks.filter(x => x.id !== b.id); saveDay(d);
+      toast('Removed ' + b.title + (b.src === 'rule' ? ' from this day. It still repeats.' : ''), 'Undo', () => { saveDay(before); render(); });
       closeSheet(); render();
     };
     const save = () => {
@@ -407,24 +408,17 @@ function openBlock(d, b, preset, tpl) {
       const names = $('#bAttach', sh).value.split(',').map(x => x.trim()).filter(Boolean);
       const oldAtt = X.attachObjs(src.attach);
       const vals = { title, cat: $('#bCat', sh).value, start: clamp(start, 0, 1439), dur, mit: $('#bMit', sh).checked, pillar, strict, checks: $('#bChecks', sh).checked, backup: pillar && !strict && bv ? toMin(bv) : null };
-      const willLive = tpl || (isNew ? true : status !== 'skipped' && status !== 'moved');
-      const cl = willLive ? X.clashWith(tpl ? tpl.blocks : d.blocks, { start: vals.start, dur }, b ? b.id : null) : null;
+      const willLive = isNew ? true : status !== 'skipped' && status !== 'moved';
+      const cl = willLive ? X.clashWith(d.blocks, { start: vals.start, dur }, b ? b.id : null) : null;
       if (cl) { const er = $('#bErr', sh); er.hidden = false; er.textContent = 'Overlaps ' + clashTxt(cl) + '. Change the start or the length.'; return; }
-      if (tpl) {
-        vals.attach = names;
-        if (isNew) tpl.blocks.push(Object.assign({ id: uid() }, vals)); else Object.assign(tpl.blocks.find(x => x.id === b.id), vals);
-        tpl.blocks.sort((a, c) => a.start - c.start);
-        bumpTpl(tpl);
-      } else {
-        vals.attach = names.map(n => ({ t: n, done: !!(oldAtt.find(a => a.t === n) || {}).done }));
-        vals.note = $('#bNote', sh).value.trim();
-        if (isNew) { const unpl = $('#bUnpl', sh).checked; d.blocks.push(Object.assign({ id: uid(), src: 'manual', status: unpl ? 'done' : 'planned', unplanned: unpl }, vals)); }
-        else Object.assign(d.blocks.find(x => x.id === b.id), vals, { status });
-        sortBlocks(d);
-        saveDay(d);
-        const dr = $('#bDream', sh);
-        if (dr && item) { item.done = dr.checked; item.doneAt = dr.checked ? d.date : null; saveCfg(); }
-      }
+      vals.attach = names.map(n => ({ t: n, done: !!(oldAtt.find(a => a.t === n) || {}).done }));
+      vals.note = $('#bNote', sh).value.trim();
+      if (isNew) { const unpl = $('#bUnpl', sh).checked; d.blocks.push(Object.assign({ id: uid(), src: 'manual', status: unpl ? 'done' : 'planned', unplanned: unpl }, vals)); }
+      else Object.assign(d.blocks.find(x => x.id === b.id), vals, { status });
+      sortBlocks(d);
+      saveDay(d);
+      const dr = $('#bDream', sh);
+      if (dr && item) { item.done = dr.checked; item.doneAt = dr.checked ? d.date : null; saveCfg(); }
       closeSheet(); render();
     };
     $('[data-save]', sh).onclick = save;
@@ -547,26 +541,31 @@ function statusCounts(d) { const nm = nowMin(), t = today(); const past = d.bloc
 function dayBar(d, nm) {
   const s = CFG.settings, span = Math.max(1, s.bedtime - s.dayStart);
   const pct = clamp(Math.round((nm - s.dayStart) / span * 100), 0, 100);
-  const done = d.blocks.filter(b => b.status === 'done' && b.cat !== 'sleep').reduce((a, b) => a + b.dur, 0);
-  return '<div class="daybar2"><div class="db-t"><span>Day ' + pct + '% gone · ' + durTxt(Math.max(0, s.bedtime - nm)) + ' to bedtime</span><span>' + durTxt(done) + ' done</span></div><div class="bar day"><i style="width:' + pct + '%"></i></div></div>';
+  return '<div class="bar day" title="Day ' + pct + '% gone"><i style="width:' + pct + '%"></i></div>';
 }
-function nowBarHtml(d) {
+function nowBarHtml(d, stats) {
   const nm = nowMin(), s = CFG.settings;
   const cur = currentBlock(d, nm);
   const next = d.blocks.filter(X.live).filter(b => b.start > nm).sort((a, b) => a.start - b.start)[0];
-  if (nm >= s.bedtime) return '<div class="nowbar" id="nowbar"><div><div class="now-t">' + ic('moon', 's-ic') + ' Past your bedtime</div><div class="now-s">Lights out. Close the day if you have not.</div></div><div class="acts"><button class="btn pri" data-act="close">Close the day</button></div></div>';
-  if (cur) {
+  let t, sub, blockBar = '';
+  if (nm >= s.bedtime) { t = 'Past your bedtime'; sub = 'Lights out. Close the day if you have not.'; }
+  else if (cur) {
     const left = cur.start + cur.dur - nm, pct = Math.round((nm - cur.start) / cur.dur * 100);
-    const chk = cur.checks ? ' · next check ' + hm(Math.ceil((nm + 1) / 30) * 30) + ' (3 min, timer first)' : '';
-    return '<div class="nowbar" id="nowbar"><div><div class="now-t">Now: ' + esc(cur.title) + '</div><div class="now-s">' + durTxt(left) + ' left, ends ' + hm(cur.start + cur.dur) + chk + (next ? ' · then ' + esc(next.title) + ' ' + hm(next.start) : '') + '</div><div class="bar" style="--c:' + catOf(CFG, cur.cat).color + '"><i style="width:' + pct + '%"></i></div>'
-      + dayBar(d, nm) + '</div><div class="acts"><button class="btn" data-act="bored">Bored?</button></div></div>';
+    t = '<span class="dot" style="--c:' + catOf(CFG, cur.cat).color + '"></span>' + esc(cur.title);
+    sub = durTxt(left) + ' left · ends ' + hm(cur.start + cur.dur) + (cur.checks ? ' · next check ' + hm(Math.ceil((nm + 1) / 30) * 30) : '') + (next ? ' · then ' + esc(next.title) + ' ' + hm(next.start) : '');
+    blockBar = '<div class="bar blk-bar" style="--c:' + catOf(CFG, cur.cat).color + '"><i style="width:' + pct + '%"></i></div>';
+  } else {
+    const until = next ? next.start : s.bedtime;
+    t = 'Free now'; sub = durTxt(until - nm) + ' until ' + (next ? esc(next.title) + ' ' + hm(next.start) : 'bedtime ' + hm(s.bedtime));
   }
-  const until = next ? next.start : s.bedtime;
-  return '<div class="nowbar" id="nowbar"><div><div class="now-t">Free now</div><div class="now-s">' + durTxt(until - nm) + ' until ' + (next ? esc(next.title) + ' at ' + hm(next.start) : 'bedtime ' + hm(s.bedtime)) + '. Pick it before boredom picks the phone.</div>' + dayBar(d, nm) + '</div>'
-    + '<div class="acts"><button class="btn" data-act="bored">Bored?</button></div></div>';
+  const pct = clamp(Math.round((nm - s.dayStart) / Math.max(1, s.bedtime - s.dayStart) * 100), 0, 100);
+  return '<div class="nowbar" id="nowbar"><div class="nb-main"><div class="now-t">' + t + '</div><div class="now-s">' + sub + '</div>' + blockBar + '</div>'
+    + '<div class="nb-side"><div class="nb-stats">' + (stats || '') + '<span>day ' + pct + '%</span></div><button class="btn sm ghost" data-act="bored">Bored?</button></div>'
+    + dayBar(d, nm) + '</div>';
 }
 function dismissed(date) { const o = load(LS_DISMISS) || {}; return o[date] || []; }
-function dayPpm() { return isPhone() ? 1.0 : 0.8; }
+let FIT_PPM = 0.8;
+function dayPpm() { return isPhone() ? 0.9 : FIT_PPM; }
 const blockOf = (d, x) => x.placed ? d.blocks.find(b => b.id === x.placed) : null;
 let SUGS = [];
 const FIT_MAX = 5;  // your tasks + Saarthi suggestions, never more than 5 a day
@@ -580,13 +579,12 @@ function fitHtml(d) {
   const todos = d.todo || [];
   const open = todos.filter(x => !x.done && !blockOf(d, x));
   const needMin = open.reduce((a, x) => a + (x.min || 30), 0);
-  let h = '<div class="ag fit"><div class="ag-h"><span>To fit ' + (d.date === t ? 'today' : fmtShort(d.date)) + ' · ' + Math.min(FIT_MAX, todos.length) + '/' + FIT_MAX + '</span><span>' + (open.length ? open.length + ' to place · ' + durTxt(needMin) + ' · ' : '') + durTxt(freeMin) + ' free</span></div>';
+  let h = '<div class="ag fit"><div class="ag-h"><span>To fit ' + (d.date === t ? 'today' : fmtShort(d.date)) + ' <b class="cnt">' + Math.min(FIT_MAX, todos.length) + '/' + FIT_MAX + '</b></span><span>' + durTxt(freeMin) + ' free</span></div>';
   if (needMin > freeMin * (1 - s.buffer) && open.length) h += '<div class="al warn" style="margin:8px 12px">' + durTxt(needMin) + ' to fit but only ' + durTxt(freeMin) + ' free. Pick what matters, move the rest to another day.</div>';
   h += todos.map(x => {
     const b = blockOf(d, x), done = x.done || (b && b.status === 'done'), c = catOf(CFG, x.cat);
     return '<div class="fit-row ' + (done ? 'done' : '') + (b || done ? '' : ' drag') + '" style="--c:' + c.color + '"' + (b || done ? '' : ' data-drag="todo:' + x.id + '" data-label="' + esc(x.title) + '"') + '><button type="button" class="fit-chk" data-act="fitdone" data-id="' + x.id + '" aria-label="Mark done">' + (done ? '✓' : '') + '</button>'
       + '<div class="ag-main"><div class="ag-title"><span>' + esc(x.title) + '</span></div><div class="ag-meta">' + durTxt(x.min || 30) + ' · ' + esc(c.name) + (b ? ' · at ' + hm(b.start) : '') + (x.by === 'saarthi' ? ' · from Saarthi' : '') + '</div></div>'
-      + (b || done ? '<span></span>' : '<button type="button" class="btn sm pri" data-act="fitplace" data-id="' + x.id + '">Place</button>')
       + '<button type="button" class="ag-lock" data-act="fitdel" data-id="' + x.id + '" aria-label="Remove">×</button></div>';
   }).join('');
   if (todos.length >= FIT_MAX) h += '<div class="fit-full">' + FIT_MAX + ' for today. Tick one done or remove one to add another.</div>';
@@ -606,7 +604,7 @@ function fitHtml(d) {
     h += opsShown.map(({ o, i }) => '<div class="fit-row sug' + (o.op.type === 'addBlock' ? ' drag" data-drag="op:' + i + '" data-label="' + esc(o.op.block.title) : '') + '"><span class="ag-dot" style="--c:var(--accent)"></span><div class="ag-main"><div class="ag-title"><span>' + esc(o.label) + '</span></div><div class="ag-meta">Saarthi' + (o.why ? ' · ' + esc(o.why) : '') + '</div></div><button type="button" class="btn sm pri" data-act="opfit" data-i="' + i + '">Accept</button><button type="button" class="ag-lock" data-act="oprej" data-i="' + i + '" aria-label="Reject">×</button></div>').join('');
     h += SUGS.map((sg, i) => { const c = catOf(CFG, sg.item.cat); return '<div class="fit-row sug drag" style="--c:' + c.color + '" data-drag="sug:' + i + '" data-label="' + esc(sg.item.title) + '"><span class="ag-dot"></span><div class="ag-main"><div class="ag-title"><span>' + esc(sg.item.title) + '</span></div><div class="ag-meta">' + durTxt(sg.min) + ' at ' + hm(sg.gap.start) + ' · ' + esc(sg.why) + '</div></div><button type="button" class="btn sm" data-act="sugacc" data-i="' + i + '">Accept</button><button type="button" class="ag-lock" data-act="sughide" data-id="' + esc(sg.item.id) + '" aria-label="Not today">×</button></div>'; }).join('');
   }
-  if (todos.some(x => !x.done && !blockOf(d, x)) || SUGS.length || opsShown.length) h += '<div class="fit-hint">Drag a task onto the calendar, or tap Place.</div>';
+  if (todos.some(x => !x.done && !blockOf(d, x)) || SUGS.length || opsShown.length) h += '<div class="fit-hint">Drag a task onto the calendar to place it.</div>';
   return h + '</div>';
 }
 function fitAdd() {
@@ -708,7 +706,8 @@ function viewToday() {
     + (CUR <= t ? '<button class="btn pri" data-act="close">Close day</button>' : '');
   let top = '';
   if (!localStorage.getItem(LS_ONB)) top += '<div class="card inbox" style="margin-bottom:12px"><h3>Welcome to DayBox</h3><ol class="small" style="margin:0 0 10px;padding-left:18px"><li>Sign in with Google (the same account as Tenfold) so it syncs to your phone.</li><li>When a block ends, tap ✓ or ✗. That is all the logging.</li><li>Bored or free? Press <b>What now?</b></li></ol><div class="row"><button class="btn pri sm" data-act="signin">Sign in</button><button class="btn ghost sm" data-act="onb">Got it</button></div></div>';
-  if (isToday) top += nowBarHtml(d);
+  const statTxt = d.untracked ? '' : '<span>' + Math.round(pc.pct * 100) + '% booked</span><span>' + durTxt(free) + ' free</span>' + (pil.pillarsPlanned ? '<span>' + pil.pillarsKept + '/' + pil.pillarsPlanned + ' pillars</span>' : '') + (sc.past ? '<span>' + sc.marked + '/' + sc.past + ' marked</span>' : '');
+  if (isToday) top += nowBarHtml(d, statTxt);
   if (isToday && pendingOps()) top += '<div class="al" style="margin-bottom:10px">' + ic('saarthi', 's-ic') + '<span>Saarthi has <b>' + pendingOps() + '</b> suggestions.</span><button class="btn sm x" data-act="nav" data-v="saarthi">Open</button></div>';
   if (yday && yday.close && yday.close.mit && isToday) top += '<div class="al" style="margin-bottom:10px">★ <span>Today\'s MIT (from last night): <b>' + esc(yday.close.mit) + '</b></span></div>';
   if (d.untracked) top += '<div class="untracked">' + ic('lock', 's-ic') + '<span>Not tracked. DayBox was not used this day.</span><button class="btn sm" data-act="track-empty">Add what happened</button><button class="btn sm" data-act="track-routine">Fill from routine</button></div>';
@@ -718,14 +717,8 @@ function viewToday() {
     const offers = isToday ? X.backupOffers(d, nm) : [];
     const must = pc.list.filter(a => a.lvl === 'alert' && !dis.includes(a.t));
     const tips = pc.list.filter(a => a.lvl !== 'alert' && !dis.includes(a.t));
-    top += '<div class="sumline">'
-      + '<span class="chip ' + (pc.pct > 1 - s.buffer ? 'warn' : '') + '"><b>' + Math.round(pc.pct * 100) + '%</b> booked</span>'
-      + '<span class="chip"><b>' + durTxt(free) + '</b> ' + (isToday ? 'free left' : 'free') + '</span>'
-      + (pil.pillarsPlanned ? '<span class="chip"><b>' + pil.pillarsKept + '/' + pil.pillarsPlanned + '</b> pillars</span>' : '')
-      + (sc.past ? '<span class="chip"><b>' + sc.marked + '/' + sc.past + '</b> marked</span>' : '')
-      + (slipOn(CUR) ? '<span class="chip warn">sanyam slip logged</span>' : '')
-      + (tips.length ? '<button class="btn ghost sm" data-act="tips">' + tips.length + ' tip' + (tips.length > 1 ? 's' : '') + ' ' + (TIPS_OPEN ? '▾' : '▸') + '</button>' : '')
-      + '</div>';
+    const extra = (slipOn(CUR) ? '<span class="warn-t">sanyam slip logged</span>' : '') + (tips.length ? '<button class="linkbtn" data-act="tips">' + tips.length + ' tip' + (tips.length > 1 ? 's' : '') + ' ' + (TIPS_OPEN ? '▾' : '▸') + '</button>' : '');
+    if (!isToday || extra) top += '<div class="sumline">' + (isToday ? '' : statTxt) + extra + '</div>';
     const shown = must.concat(TIPS_OPEN ? tips : []);
     if (offers.length || shown.length)
       top += '<div class="alerts">' + offers.map(o => '<div class="al alert"><span>Missed <b>' + esc(o.block.title) + '</b>. Backup is ready.</span><button class="btn sm x" data-act="backup" data-id="' + o.block.id + '" data-at="' + o.at + '">Use backup ' + hm(o.at) + '</button></div>').join('')
@@ -733,7 +726,7 @@ function viewToday() {
   }
   const col = { day: d, date: CUR, blocks: d.blocks, editable: true, past, virtual: d.virtual && !d.untracked, showGaps: !past, twice };
   const grid = '<div class="gwrap daygrid" id="dayGrid">' + gridHtml([col], 'day', ppm) + '</div>';
-  const hint = '<p class="hint" style="margin-top:8px">' + (phone ? 'Tap empty space to add. Press and hold a block, then drag. Drag the bottom edge to resize.' : 'Click or drag on empty space to add. Drag a block to move it, its bottom edge to resize.') + ' Marked blocks are locked: tap the corner lock to change one.</p>';
+  const hint = '';
   let body;
   // one calendar only: the To fit list sits beside (laptop) or above (phone) the timeline
   const fit = fitHtml(d);
@@ -746,6 +739,11 @@ function viewToday() {
       const fi = $('#fitTitle'); if (fi) fi.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); fitAdd(); } };
       if (!showGrid) return;
       const gw = $('#dayGrid');
+      if (!phone) {  // size the day to the window: :00 and :30 rows, no scrolling
+        const avail = innerHeight - gw.getBoundingClientRect().top - scrollY - 44;
+        const ideal = clamp(avail / (s.dayEnd - s.dayStart), 0.5, 1.2);
+        if (Math.abs(ideal - FIT_PPM) > 0.02) { FIT_PPM = ideal; return render(); }
+      }
       bindGrid(gw, [col], 'day', ppm, dayHandlers);
       bindFitDrag(ppm);
       if (SCROLL_NOW) {
@@ -948,36 +946,13 @@ function planIt(id) {
 /* ---------- routine ---------- */
 function daysTxt(ds) { const s = (ds || []).slice().sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)); if (s.length === 7) return 'Every day'; if (s.join() === '1,2,3,4,5') return 'Mon–Fri'; if (s.join() === '6,0') return 'Weekend'; return s.map(d => DOW[d]).join(' '); }
 function viewRoutine() {
-  const tab = TAB.routine, t = today();
-  let body = '<div class="tabs">' + [['templates', 'Day templates'], ['rules', 'Recurring blocks']].map(([k, l]) => '<button class="' + (tab === k ? 'on' : '') + '" data-act="tab" data-g="routine" data-k="' + k + '">' + l + '</button>').join('') + '</div>';
-  let after = null;
-  if (tab === 'templates') {
-    body += '<p class="hint">A template is the shape of a day. Changes apply to upcoming days you have not touched yet. Days you already saved keep their plan, so your reports never rewrite themselves.</p>';
-    const ts = CFG.templates.filter(x => !x.deleted);
-    body += '<div class="card"><div class="list">' + ts.map(x => '<div class="li"><span class="chip">' + daysTxt(x.days) + '</span><div><div class="t">' + esc(x.name) + '</div><div class="m">' + x.blocks.length + ' blocks · version ' + (x.version || 1) + '</div></div><span class="row"><button class="btn sm" data-act="tpledit" data-id="' + x.id + '">Edit</button><button class="btn sm ghost" data-act="tpldup" data-id="' + x.id + '">Copy</button></span></div>').join('') + '</div><div style="margin-top:10px"><button class="btn pri sm" data-act="tplnew">' + ic('plus') + 'New template</button></div></div>';
-    const tp = TPL_EDIT && CFG.templates.find(x => x.id === TPL_EDIT && !x.deleted);
-    if (tp) {
-      const clash = tp.days.filter(d => ts.some(o => o !== tp && o.days.includes(d) && ts.indexOf(o) < ts.indexOf(tp)));
-      const col = { date: 'tpl', blocks: tp.blocks, editable: true };
-      const ppm = isPhone() ? 0.9 : 0.95;
-      body += '<div class="card" style="margin-top:14px"><div class="row" style="margin-bottom:12px"><input type="text" id="tpName" value="' + esc(tp.name) + '" style="max-width:260px"><div class="seg" id="tpDays">' + [1, 2, 3, 4, 5, 6, 0].map(d => '<button type="button" data-d="' + d + '" class="' + (tp.days.includes(d) ? 'on' : '') + '">' + DOW[d] + '</button>').join('') + '</div><button class="btn sm" data-act="tplapply" data-id="' + tp.id + '">Apply to a day</button><button class="btn sm danger" data-act="tpldel" data-id="' + tp.id + '">Delete</button><button class="btn sm ghost" data-act="tplclose">Close</button></div>'
-        + (clash.length ? '<div class="al warn" style="margin-bottom:10px">' + clash.map(d => DOW[d]).join(', ') + ' also used by an earlier template. The first one in the list wins.</div>' : '')
-        + '<p class="hint">Recurring blocks (Routine → Recurring) are added on top of the template, so they are not shown here.</p>'
-        + '<div class="gwrap" id="tplGrid">' + gridHtml([col], 'tpl', ppm) + '</div></div>';
-      after = () => {
-        bindGrid($('#tplGrid'), [col], 'tpl', ppm, tplHandlers(tp));
-        $('#tpName').onchange = e => { tp.name = e.target.value.trim() || 'Template'; bumpTpl(tp); render(); };
-        $$('#tpDays button').forEach(b => { b.onclick = () => { const d = +b.dataset.d; tp.days = tp.days.includes(d) ? tp.days.filter(x => x !== d) : tp.days.concat(d); bumpTpl(tp); render(); }; });
-      };
-    }
-  } else {
-    body += '<p class="hint">Blocks that repeat on set weekdays: pillars, kids slot, standups. Editing one starts from today. Past and saved days keep the old time.</p>';
-    const liveR = CFG.rules.filter(r => X.ruleLive(r, t)).sort((a, b) => a.start - b.start);
-    const old = CFG.rules.filter(r => !r.deleted && r.to && r.to < t);
-    body += '<div class="card"><div class="list">' + liveR.map(r => { const c = catOf(CFG, r.cat); return '<div class="li" style="--c:' + c.color + '"><span class="sw"></span><div data-act="rule" data-id="' + r.id + '" style="cursor:pointer"><div class="t">' + (r.pillar ? ic('lock', 's-ic') + ' ' : '') + esc(r.title) + '</div><div class="m"><span class="mono">' + hm(r.start) + '–' + hm(r.start + r.dur) + '</span> · ' + daysTxt(r.days) + ' · ' + esc(c.name) + (r.pillar ? (r.strict ? ' · strict, no backup' : r.backup != null ? ' · backup ' + hm(r.backup) : '') : '') + (r.from && r.from > '2000-01-01' ? ' · from ' + fmtShort(r.from) : '') + '</div></div><button class="btn sm" data-act="rule" data-id="' + r.id + '">Edit</button></div>'; }).join('') + '</div><div style="margin-top:10px"><button class="btn pri sm" data-act="rule">' + ic('plus') + 'Add recurring block</button></div></div>';
-    if (old.length) body += '<div class="card"><h3>Past versions</h3><div class="list">' + old.map(r => '<div class="li"><span class="chip">' + (r.from && r.from > '2000-01-01' ? fmtShort(r.from) : 'start') + ' → ' + fmtShort(r.to) + '</span><div><div class="t">' + esc(r.title) + '</div><div class="m mono">' + hm(r.start) + '–' + hm(r.start + r.dur) + ' · ' + daysTxt(r.days) + '</div></div><span></span></div>').join('') + '</div></div>';
-  }
-  return { title: 'Routine', sub: 'templates and recurring blocks', body, after };
+  const t = today();
+  let body = '<p class="hint">Your routine: blocks that repeat on set weekdays. Editing one starts from today, past days keep the old time. A new block trims the plain blocks it lands on, but never a pillar.</p>';
+  const liveR = CFG.rules.filter(r => X.ruleLive(r, t)).sort((a, b) => a.start - b.start || a.days[0] - b.days[0]);
+  const old = CFG.rules.filter(r => !r.deleted && r.to && r.to < t);
+  body += '<div class="card"><div class="list">' + liveR.map(r => { const c = catOf(CFG, r.cat); return '<div class="li" style="--c:' + c.color + '"><span class="sw"></span><div data-act="rule" data-id="' + r.id + '" style="cursor:pointer"><div class="t">' + (r.pillar ? ic('lock', 's-ic') + ' ' : '') + esc(r.title) + '</div><div class="m"><span class="mono">' + hm(r.start) + '–' + hm(r.start + r.dur) + '</span> · ' + daysTxt(r.days) + ' · ' + esc(c.name) + (r.pillar ? (r.strict ? ' · strict, no backup' : r.backup != null ? ' · backup ' + hm(r.backup) : '') : '') + (r.from && r.from > '2000-01-01' ? ' · from ' + fmtShort(r.from) : '') + '</div></div><button class="btn sm" data-act="rule" data-id="' + r.id + '">Edit</button></div>'; }).join('') + '</div><div style="margin-top:10px"><button class="btn pri sm" data-act="rule">' + ic('plus') + 'Add recurring block</button></div></div>';
+  if (old.length) body += '<div class="card"><h3>Past versions</h3><div class="list">' + old.map(r => '<div class="li"><span class="chip">' + (r.from && r.from > '2000-01-01' ? fmtShort(r.from) : 'start') + ' → ' + fmtShort(r.to) + '</span><div><div class="t">' + esc(r.title) + '</div><div class="m mono">' + hm(r.start) + '–' + hm(r.start + r.dur) + ' · ' + daysTxt(r.days) + '</div></div><span></span></div>').join('') + '</div></div>';
+  return { title: 'Routine', sub: 'recurring blocks', body };
 }
 function openRule(id) {
   const t = today();
@@ -1001,8 +976,9 @@ function openRule(id) {
       const title = $('#rTitle', sh).value.trim(); if (!title) return $('#rTitle', sh).focus();
       const pillar = $('#rPillar', sh).checked, strict = pillar && $('#rStrict', sh).checked, bv = $('#rBackup', sh).value;
       const patch = { title, cat: $('#rCat', sh).value, start: toMin($('#rStart', sh).value), dur: +$('#rDur', sh).value, days, pillar, strict, backup: pillar && !strict && bv ? toMin(bv) : null, attach: $('#rAttach', sh).value.split(',').map(x => x.trim()).filter(Boolean) };
-      const rc = X.ruleClash(CFG, Object.assign({ id: id || '_new' }, patch), id, t);
-      if (rc) return toast('Overlaps recurring ' + rc.title + ' ' + hm(rc.start) + '–' + hm(rc.start + rc.dur) + ' on a shared day.', null, null, 7000);
+      const mr = X.makeRoom(CFG, Object.assign({ id: id || '_new' }, patch), id, t);
+      if (mr.error) return toast(mr.error + '. Pick another time.', null, null, 7000);
+      if (mr.trimmed.length) toast('Made room: trimmed ' + mr.trimmed.join(', ') + ' from today.', null, null, 6000);
       if (!id) CFG.rules.push(Object.assign({ id: uid(), from: t, to: null }, patch));
       else {
         const nr = X.editRule(CFG, id, patch, t);
@@ -1017,16 +993,6 @@ function openRule(id) {
     };
   });
 }
-function applyTemplate(date, tid) {
-  const tp = CFG.templates.find(x => x.id === tid); if (!tp) return;
-  const before = clone(day(date));
-  const fake = Object.assign({}, CFG, { templates: [Object.assign({}, tp, { days: [dow(date)] })] });
-  const nd = X.resetDay(fake, before);
-  nd.tpl = { id: tp.id, version: tp.version || 1, name: tp.name };
-  saveDay(nd); render();
-  toast(tp.name + ' applied to ' + fmtShort(date), 'Undo', () => { saveDay(before); render(); }, 7000);
-}
-
 /* ---------- insights ---------- */
 function fmtVal(v, f) { if (v == null) return '–'; return f === 'pct' ? Math.round(v * 100) + '%' : durTxt(v); }
 function viewInsights() {
@@ -1236,7 +1202,7 @@ function tick() {
   if (crossed && VIEW === 'today' && CUR === t && !DRAGGING && $('#ov').hidden) { lastTick = nm; render(); return; }
   lastTick = nm;
   if (VIEW === 'today' && CUR === t && !DRAGGING && $('#ov').hidden) {
-    const nb = $('#nowbar'); if (nb && d) nb.outerHTML = nowBarHtml(d);
+    const nb = $('#nowbar'); if (nb && d) { const st = nb.querySelector('.nb-stats'); const keep = st ? Array.from(st.children).slice(0, -1).map(x => x.outerHTML).join('') : ''; nb.outerHTML = nowBarHtml(d, keep); }
     const nl = $('.nowline'); const s = CFG.settings, ppm = dayPpm();
     if (nl) nl.style.top = ((nm - s.dayStart) * ppm) + 'px';
     renderNav();
@@ -1258,7 +1224,6 @@ const ACTS = {
   next: () => { CUR = addDays(CUR, 1); SCROLL_NOW = true; render(); },
   noop: () => {},
   fitadd: fitAdd,
-  fitplace: a => openPlace('todo:' + a.dataset.id, null),
   fitdone: a => { const d = AG_DAY, x = d && (d.todo || []).find(y => y.id === a.dataset.id); if (!x) return; const b = blockOf(d, x); x.done = !(x.done || (b && b.status === 'done')); if (b) b.status = x.done ? 'done' : 'planned'; saveDay(d); render(); },
   fitdel: a => { const d = AG_DAY; if (!d) return; const before = clone(d); d.todo = (d.todo || []).filter(y => y.id !== a.dataset.id); saveDay(d); render(); toast('Removed from the list', 'Undo', () => { saveDay(before); render(); }); },
   sugacc: a => { const d = AG_DAY, sg = SUGS[+a.dataset.i]; if (!d || !sg) return; if ((d.todo || []).length >= FIT_MAX) return toast(FIT_MAX + ' is the limit for a day.'); d.todo = (d.todo || []).concat({ id: uid(), title: sg.item.title, min: sg.min, cat: sg.item.cat, done: false, by: 'saarthi' }); saveDay(d); render(); toast('Added to To fit. Place it when you are ready.'); },
@@ -1281,7 +1246,6 @@ const ACTS = {
   printplan: () => { closeSheet(); printDay(CUR, false); },
   printblank: () => { closeSheet(); printDay(CUR, true); },
   fill: () => doFill(CUR),
-  reset: () => { const before = clone(day(CUR)); saveDay(X.resetDay(CFG, before)); render(); toast('Rebuilt from routine. Your own blocks and marks stayed.', 'Undo', () => { saveDay(before); render(); }, 7000); },
   close: () => openClose(VIEW === 'today' ? CUR : today()),
   whatnow: () => openWhatNow(VIEW === 'today' ? CUR : today()),
   bored: () => openWhatNow(today()),
@@ -1300,12 +1264,6 @@ const ACTS = {
   boredsave: () => { CFG.boredom = $('#boredTxt').value.split('\n').map(x => x.trim()).filter(Boolean); saveCfg(); toast('Saved'); },
   planws: a => { PLAN_WS = a.dataset.ws; render(); },
   plansave: savePlan,
-  tpledit: a => { TPL_EDIT = a.dataset.id; render(); },
-  tplclose: () => { TPL_EDIT = null; render(); },
-  tplnew: () => { const tp = { id: uid(), name: 'New template', version: 1, days: [], blocks: [] }; CFG.templates.push(tp); saveCfg(); TPL_EDIT = tp.id; render(); },
-  tpldup: a => { const s = CFG.templates.find(x => x.id === a.dataset.id); const tp = Object.assign(clone(s), { id: uid(), name: s.name + ' copy', version: 1, days: [] }); tp.blocks.forEach(b => { b.id = uid(); }); CFG.templates.push(tp); saveCfg(); TPL_EDIT = tp.id; render(); },
-  tpldel: a => { const tp = CFG.templates.find(x => x.id === a.dataset.id); tp.deleted = true; saveCfg(); TPL_EDIT = null; render(); toast('Template deleted', 'Undo', () => { tp.deleted = false; saveCfg(); render(); }); },
-  tplapply: a => { const tp = CFG.templates.find(x => x.id === a.dataset.id); const t = today(); openSheet('<div class="sh-h"><h2>Apply ' + esc(tp.name) + '</h2><button class="iconbtn" data-x aria-label="Close">×</button></div><div class="form"><label class="field"><span>Day</span><input type="date" id="apDate" value="' + CUR + '" min="' + t + '"></label><p class="hint" style="margin:0">Replaces template and routine blocks on that day. Your own blocks and marks stay.</p></div><div class="sh-f"><button class="btn" data-x>Cancel</button><button class="btn pri" id="apGo">Apply</button></div>', sh => { $('#apGo', sh).onclick = () => { const dt = $('#apDate', sh).value; if (dt < t) return; closeSheet(); applyTemplate(dt, tp.id); }; }); },
   rule: a => openRule(a.dataset.id),
   opacc: a => decideOp(+a.dataset.i, true),
   oprej: a => decideOp(+a.dataset.i, false),
@@ -1319,10 +1277,11 @@ document.addEventListener('click', e => {
   const fn = ACTS[a.dataset.act]; if (!fn) return;
   e.preventDefault(); fn(a, e);
 });
-addEventListener('resize', (() => { let w = innerWidth, t; return () => { clearTimeout(t); t = setTimeout(() => { if ((innerWidth > 820) !== (w > 820)) { w = innerWidth; if (!DRAGGING) render(); } }, 200); }; })());
+addEventListener('resize', (() => { let t; return () => { clearTimeout(t); t = setTimeout(() => { if (!DRAGGING && $('#ov').hidden) render(); }, 200); }; })());
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 
+if (MIGRATED) saveCfg();
 ensureToday();
 render();
 })();

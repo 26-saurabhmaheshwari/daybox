@@ -38,7 +38,7 @@ const SEED_CATS = [
 const SHUTDOWN = ["Tomorrow's MIT written", 'Laptop closed', 'Phone on alerts only'];
 const T = (start, dur, title, cat, x) => Object.assign({ id: uid(), start, dur, title, cat, attach: [] }, x || {});
 function seedConfig() {
-  return {
+  const cfg = {
     v: 1, updated: 0,
     settings: {
       dayStart: 360, dayEnd: 1410, bedtime: 1350, buffer: 0.2, sound: true, theme: 'system',
@@ -85,6 +85,8 @@ function seedConfig() {
     tf: { on: true, goalMap: {} },
     weekPlans: {},
   };
+  migrateTemplates(cfg);
+  return cfg;
 }
 
 /* merge precedence: user values override seeds, never the reverse */
@@ -101,7 +103,34 @@ function mergeConfig(saved) {
   out.cats = (out.cats || []).slice();
   s.cats.forEach(c => { if (!ids.has(c.id)) out.cats.push(c); });
   ['templates', 'rules', 'items', 'boredom'].forEach(k => { if (!Array.isArray(out[k])) out[k] = s[k]; });
+  migrateTemplates(out);
   return out;
+}
+/* Templates are gone: every template block becomes a recurring block on the same weekdays.
+   Where a recurring block already sits inside it, the template block is split around it,
+   and weekdays that end up with the same pieces share one recurring block. Runs once (templates get deleted:true). */
+function migrateTemplates(cfg) {
+  const live = (cfg.templates || []).filter(t => !t.deleted);
+  if (!live.length) return false;
+  const current = cfg.rules.filter(r => !r.deleted && !r.to);
+  const groups = {};
+  for (let d = 0; d < 7; d++) {
+    const t = live.find(x => (x.days || []).includes(d)); // first template wins, same as before
+    if (!t) continue;
+    const dr = current.filter(r => (r.days || []).includes(d));
+    (t.blocks || []).forEach(b => {
+      if (dr.some(r => norm(r.title) === norm(b.title))) return;
+      carve([{ id: 'x', start: b.start, dur: b.dur }], dr).forEach((p, i) => {
+        const r = { title: b.title, cat: b.cat, start: p.start, dur: p.dur, pillar: !!b.pillar, backup: b.backup == null ? null : b.backup, strict: !!b.strict,
+          checks: !!b.checks, mit: !!b.mit, attach: i ? [] : (b.attach || []).map(a => typeof a === 'string' ? a : a.t) };
+        const key = JSON.stringify(r);
+        (groups[key] = groups[key] || { r, days: [] }).days.push(d);
+      });
+    });
+  }
+  Object.values(groups).forEach(g => cfg.rules.push(Object.assign({ id: uid(), days: g.days, from: '2000-01-01', to: null }, g.r)));
+  live.forEach(t => { t.deleted = true; t.migrated = true; });
+  return true;
 }
 
 const catOf = (cfg, id) => cfg.cats.find(c => c.id === id) || { id, name: id || '?', color: '#888', group: 'fixed' };
@@ -157,6 +186,21 @@ function carve(base, cutters, minLen) {
     pieces.filter(([s, e]) => e - s >= minLen).forEach(([s, e], i) => out.push(Object.assign({}, b, { id: i ? uid() : b.id, start: s, dur: e - s, attach: i ? [] : b.attach })));
   });
   return out;
+}
+/* a new/edited recurring block trims the plain recurring blocks it lands on (from today); pillars never give way */
+function makeRoom(cfg, rule, ignoreId, today) {
+  const hits = cfg.rules.filter(r => r.id !== ignoreId && r.id !== rule.id && ruleLive(r, today) && (r.days || []).some(d => (rule.days || []).includes(d)) && overlaps(r, rule));
+  const hard = hits.find(r => r.pillar);
+  if (hard) return { error: '"' + rule.title + '" overlaps the pillar ' + hard.title + ' ' + hm(hard.start) + '-' + hm(hard.start + hard.dur) };
+  hits.forEach(r => {
+    const shared = r.days.filter(d => rule.days.includes(d)), rest = r.days.filter(d => !rule.days.includes(d));
+    const base = clone(r); delete base.prev;
+    if (r.from && r.from >= today) r.deleted = true; else r.to = addDays(today, -1);
+    const mk = (days, start, dur, i) => cfg.rules.push(Object.assign(clone(base), { id: uid(), days, start, dur, from: today, to: null, prev: r.id, attach: i ? [] : base.attach }));
+    if (rest.length) mk(rest, r.start, r.dur, 0);
+    carve([{ id: 'x', start: r.start, dur: r.dur }], [rule]).forEach((p, i) => mk(shared, p.start, p.dur, i));
+  });
+  return { trimmed: hits.map(r => r.title) };
 }
 function ruleClash(cfg, rule, ignoreId, today) {
   return cfg.rules.find(r => r.id !== ignoreId && r.id !== rule.id && ruleLive(r, today) && (r.days || []).some(d => (rule.days || []).includes(d)) && overlaps(r, rule)) || null;
@@ -615,32 +659,6 @@ function applyOp(cfg, store, op, today) {
     }
     return { day: d };
   }
-  if (op.type === 'editTemplateBlock') {
-    const t = cfg.templates.find(x => x.id === op.tpl || norm(x.name) === norm(op.tpl));
-    const b = t && t.blocks.find(x => norm(x.title) === norm(op.title));
-    if (!b) return { error: 'template block not found' };
-    ['start', 'dur', 'cat'].forEach(k => { if (op[k] != null) b[k] = op[k]; });
-    if (op.newTitle) b.title = op.newTitle;
-    t.blocks.sort((a, c) => a.start - c.start);
-    t.version = (t.version || 1) + 1;
-    return { cfg: true };
-  }
-  if (op.type === 'removeTemplateBlock') {
-    const t = cfg.templates.find(x => !x.deleted && (x.id === op.tpl || norm(x.name) === norm(op.tpl)));
-    const n = t ? t.blocks.length : 0;
-    if (t) t.blocks = t.blocks.filter(x => norm(x.title) !== norm(op.title));
-    if (!t || t.blocks.length === n) return { error: 'template block "' + op.title + '" not found' };
-    t.version = (t.version || 1) + 1;
-    return { cfg: true };
-  }
-  if (op.type === 'editTemplate') {
-    const t = cfg.templates.find(x => !x.deleted && (x.id === op.tpl || norm(x.name) === norm(op.tpl)));
-    if (!t) return { error: 'template "' + op.tpl + '" not found' };
-    if (Array.isArray(op.days)) t.days = op.days.slice();
-    if (op.name) t.name = op.name;
-    t.version = (t.version || 1) + 1;
-    return { cfg: true };
-  }
   if (op.type === 'addTodo') {
     const d = dayFor(op.date), x = op.todo || {};
     if (!x.title) return { error: 'todo needs a title' };
@@ -650,16 +668,16 @@ function applyOp(cfg, store, op, today) {
   if (op.type === 'addRule') {
     const r = Object.assign({ id: uid(), from: today, to: null, attach: [], pillar: false, backup: null, strict: false }, op.rule || {});
     if (!r.title || r.start == null || !r.dur || !Array.isArray(r.days) || !r.days.length) return { error: 'recurring block needs title, start, dur, days' };
-    const rc = ruleClash(cfg, r, null, today);
-    if (rc) return { error: '"' + r.title + '" overlaps recurring ' + rc.title + ' ' + hm(rc.start) + '-' + hm(rc.start + rc.dur) };
+    const mr = makeRoom(cfg, r, null, today);
+    if (mr.error) return mr;
     cfg.rules.push(r);
     return { cfg: true };
   }
   if (op.type === 'editRule') {
     const r = cfg.rules.find(x => ruleLive(x, today) && norm(x.title) === norm(op.title));
     if (!r) return { error: 'recurring block "' + op.title + '" not found' };
-    const rc = ruleClash(cfg, Object.assign({}, r, op.patch || {}), r.id, today);
-    if (rc) return { error: '"' + r.title + '" would overlap recurring ' + rc.title };
+    const mr = makeRoom(cfg, Object.assign({}, r, op.patch || {}), r.id, today);
+    if (mr.error) return mr;
     editRule(cfg, r.id, op.patch || {}, today);
     return { cfg: true };
   }
@@ -670,8 +688,8 @@ function applyOp(cfg, store, op, today) {
 
 root.DBX = {
   pad, dkey, parseKey, addDays, dow, weekStart, hm, toMin, durTxt, hrs, clamp, clone, uid, DOW, norm, zoneOf,
-  seedConfig, mergeConfig, catOf, SEED_CATS, SHUTDOWN, WEEK_SLOTS,
-  overlaps, clashWith, carve, ruleClash, backupSlot,
+  seedConfig, mergeConfig, migrateTemplates, catOf, SEED_CATS, SHUTDOWN, WEEK_SLOTS,
+  overlaps, clashWith, carve, ruleClash, makeRoom, backupSlot,
   activeRules, templateFor, attachObjs, blockFrom, weekItemsFor, buildDay, getDay, planSnapshot, lockIfDue, resetDay,
   editRule, endRule, ruleLive, lanes, live, intervals, unionMin, gaps,
   tfGoals, candidates, matches, weekDays, itemCount, balanceState, suggest, backupOffers, useBackup, fillDay, placeBlock,

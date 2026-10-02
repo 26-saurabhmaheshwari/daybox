@@ -10,10 +10,11 @@ Personal day planner / timeboxer with Saarthi (Claude Code as the coach). No bui
 - Run `node test.js` (PowerShell; node is blocked in the Bash hook) after any JS edit. Commit + push finished changes (auto-push, same as Tenfold).
 
 ## Data model (Firestore `planner/{uid}/...`, localStorage `dbx_*`)
-- `meta/config`: settings, cats, templates, rules, items (bank), boredom, tf.goalMap, weekPlans. One doc, newer `updated` wins.
+- `meta/config`: settings, cats, rules (the whole routine: recurring blocks), items (bank), boredom, tf.goalMap, weekPlans. One doc, newer `updated` wins. Templates were removed 2026-10-02: `migrateTemplates` (in mergeConfig) turns any live template into rules once.
+- **No overlaps**: active blocks never overlap (`clashWith`). Drag/editor/ops refuse; new recurring blocks trim plain ones (`makeRoom`), never pillars; pillar backups trim plain planned blocks.
 - `days/{YYYY-MM-DD}`: `{blocks[], plan[] (snapshot when the day arrives), locked, tpl{id,version}, close{line,mit,at}, slipNote, updated}`. Per-doc newer wins.
 - `meta/inbox`: Saarthi proposals `{ops:[{id,label,why,op,state}]}`. `meta/saarthi`: learnings. `history/*`: before-snapshots for undo.
-- **Frozen days**: a stored day never changes when templates/rules change. Untouched future days are computed live (`buildDay`); untouched past days are "not tracked". Rule edits are effective-dated (`editRule` ends the old row yesterday, new row from today).
+- **Frozen days**: a stored day never changes when the routine changes. Untouched future days are computed live (`buildDay`); untouched past days are "not tracked". Rule edits are effective-dated (`editRule` ends the old row yesterday, new row from today).
 - Auto-created today gets `updated: 1` so a real edit from another device wins the merge.
 - Block: `{id,start,dur (min),title,cat,status planned|done|partial|skipped|moved,src tpl|rule|manual|bank|backup|week|saarthi,pillar,backup,strict,mit,checks,attach[{t,done}],unplanned,itemId,note}`.
 

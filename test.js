@@ -29,20 +29,30 @@ t('merge: user values override seeds', () => {
   assert.strictEqual(m.settings.bedtime, 1300); assert.strictEqual(m.settings.dayStart, 360);
   assert.strictEqual(m.cats.find(c => c.id === 'goal').name, 'Mine'); assert(m.cats.find(c => c.id === 'waster'));
 });
-t('buildDay: template + rules, rules win over same-title template block', () => {
-  const c = X.clone(cfg); c.templates[0].blocks.push({ id: 'x', start: 100, dur: 30, title: 'Morning pillar', cat: 'goal', attach: [] });
-  const d = X.buildDay(c, TODAY);
-  assert.strictEqual(d.tpl.id, 'tpl_work');
-  const mp = d.blocks.filter(b => b.title === 'Morning pillar'); assert.strictEqual(mp.length, 1); assert.strictEqual(mp[0].src, 'rule');
-  assert(d.blocks.some(b => b.title === 'Kids slot'));
+const sig = d => d.blocks.filter(X.live).map(b => b.title + '@' + b.start + '+' + b.dur).sort().join('|');
+t('templates migrate into recurring blocks with the same day shape', () => {
+  const raw = { weekPlans: {}, rules: [
+      { id: 'r1', title: 'Pillar', cat: 'pillar', start: 540, dur: 35, days: [0, 1, 2, 3, 4, 5, 6], pillar: true },
+      { id: 'r2', title: 'nvs', cat: 'office', start: 690, dur: 30, days: [1, 2, 4] } ],
+    templates: [
+      { id: 'a', name: 'Thu', days: [4], blocks: [{ id: 'x1', start: 660, dur: 120, title: 'Work', cat: 'office', checks: true, attach: [] }] },
+      { id: 'b', name: 'Workday', days: [1, 2, 3, 4, 5], blocks: [{ id: 'x2', start: 660, dur: 120, title: 'Work', cat: 'office', checks: true, attach: [] }, { id: 'x3', start: 1350, dur: 60, title: 'Blackout', cat: 'sleep', attach: [] }, { id: 'x4', start: 500, dur: 60, title: 'Pillar', cat: 'goal', attach: [] }] },
+      { id: 'c', name: 'Weekend', days: [0, 6], blocks: [{ id: 'x5', start: 600, dur: 120, title: 'Family', cat: 'family', attach: ['games'] }] } ] };
+  const before = []; for (let i = 0; i < 7; i++) before.push(sig(X.buildDay(raw, X.addDays('2026-10-05', i))));
+  assert(X.migrateTemplates(raw)); assert(raw.templates.every(t => t.deleted)); assert(!X.migrateTemplates(raw));
+  for (let i = 0; i < 7; i++) assert.strictEqual(sig(X.buildDay(raw, X.addDays('2026-10-05', i))), before[i], 'day ' + i);
+  assert.strictEqual(raw.rules.filter(r => r.title === 'Work').length, 3); // Mon/Tue/Thu split in 2, Wed/Fri whole
+  assert(raw.rules.find(r => r.title === 'Family').attach[0] === 'games');
+  assert(!raw.rules.some(r => r.title === 'Pillar' && r.cat === 'goal'));
 });
+t('seed config has no templates, only recurring blocks', () => { assert(cfg.templates.every(x => x.deleted)); assert(X.buildDay(cfg, TODAY).blocks.some(b => b.title === 'Deep work')); assert(!X.buildDay(cfg, TODAY).tpl); });
 t('Friday: no kids slot, little adventure', () => { const d = X.buildDay(cfg, '2026-10-02'); assert(!d.blocks.some(b => b.title === 'Kids slot')); assert(d.blocks.some(b => b.title === 'Little adventure')); });
-t('template edit never changes a stored day', () => {
+t('routine edit never changes a stored day', () => {
   const c = X.clone(cfg), s = { days: {} };
   const d = X.buildDay(c, TODAY); d.virtual = false; s.days[TODAY] = d;
-  c.templates[0].blocks[0].start = 300; c.templates[0].version++;
-  assert.strictEqual(X.getDay(s, c, TODAY, TODAY).blocks.find(b => b.title === 'Deep work').start, 575);
-  assert.strictEqual(X.getDay(s, c, '2026-10-05', TODAY).blocks.find(b => b.title === 'Deep work').start, 300);
+  X.editRule(c, c.rules.find(r => r.title === 'Kids slot').id, { start: 960 }, TODAY);
+  assert.strictEqual(X.getDay(s, c, TODAY, TODAY).blocks.find(b => b.title === 'Kids slot').start, 1020);
+  assert.strictEqual(X.getDay(s, c, '2026-10-05', TODAY).blocks.find(b => b.title === 'Kids slot').start, 960);
 });
 t('past untouched day is untracked, not rebuilt', () => { const d = X.getDay(store, cfg, '2026-09-20', TODAY); assert(d.untracked); assert.strictEqual(d.blocks.length, 0); });
 t('rule edit is effective-dated', () => {
@@ -117,8 +127,7 @@ t('applyOp: day + template + errors', () => {
   const c = X.clone(cfg), s = { days: {} };
   const r1 = X.applyOp(c, s, { type: 'addBlock', date: '2026-10-05', block: { start: 1290, dur: 30, title: 'Guitar', cat: 'hobby' } }, TODAY);
   assert(r1.day.blocks.some(b => b.title === 'Guitar')); assert.strictEqual(Object.keys(s.days).length, 0);
-  const r2 = X.applyOp(c, s, { type: 'editTemplateBlock', tpl: 'Workday', title: 'Deep work', start: 600 }, TODAY);
-  assert(r2.cfg); assert.strictEqual(c.templates[0].blocks[0].start, 600); assert.strictEqual(c.templates[0].version, 2);
+  assert(/unknown op/.test(X.applyOp(c, s, { type: 'editTemplateBlock', tpl: 'Workday', title: 'Deep work', start: 600 }, TODAY).error));
   assert(X.applyOp(c, s, { type: 'moveBlock', date: TODAY, title: 'Nope', start: 1 }, TODAY).error);
 });
 t('applyOp: addRule + editRule are effective-dated', () => {
@@ -128,21 +137,12 @@ t('applyOp: addRule + editRule are effective-dated', () => {
   assert(X.applyOp(c, s, { type: 'editRule', title: 'Morning pillar', patch: { title: 'Morning prayer (Sundarkand)' } }, TODAY).cfg);
   assert(X.buildDay(c, '2026-10-05').blocks.some(b => b.title === 'Morning prayer (Sundarkand)' && b.pillar && b.backup === 1080));
   assert(X.buildDay(c, '2026-10-05').blocks.some(b => b.title === '32co standup'));
+  assert(!noOverlap(X.buildDay(c, '2026-10-05')), noOverlap(X.buildDay(c, '2026-10-05')));
+  assert.strictEqual(X.buildDay(c, '2026-09-29').blocks.find(b => b.title === 'Deep work').dur, 85); // old version before today
+  assert.strictEqual(X.buildDay(c, '2026-10-05').blocks.find(b => b.title === 'Deep work').dur, 55);  // trimmed to 09:35-10:30
   assert(!X.activeRules(c, '2026-09-30').some(r => r.title === '32co standup'));
   assert(X.activeRules(c, '2026-09-30').some(r => r.title === 'Morning pillar'));
   assert(X.applyOp(c, s, { type: 'editRule', title: 'Nope', patch: {} }, TODAY).error);
-});
-t('applyOp: editTemplate days/name + template block rename', () => {
-  const c = X.clone(cfg), s = { days: {} };
-  c.templates[0].days = [5];
-  assert(X.applyOp(c, s, { type: 'editTemplate', tpl: 'Workday', days: [1, 2, 3, 4, 5] }, TODAY).cfg);
-  assert.strictEqual(X.templateFor(c, '2026-10-05').id, 'tpl_work');
-  assert(X.applyOp(c, s, { type: 'editTemplateBlock', tpl: 'Workday', title: 'Lights out', newTitle: 'Blackout' }, TODAY).cfg);
-  assert(X.buildDay(c, '2026-10-05').blocks.some(b => b.title === 'Blackout'));
-  assert(X.applyOp(c, s, { type: 'editTemplate', tpl: 'Nope', days: [] }, TODAY).error);
-  assert(X.applyOp(c, s, { type: 'removeTemplateBlock', tpl: 'Workday', title: 'Deep work' }, TODAY).cfg);
-  assert(!X.buildDay(c, '2026-10-05').blocks.some(b => b.title === 'Deep work'));
-  assert(X.applyOp(c, s, { type: 'removeTemplateBlock', tpl: 'Workday', title: 'Deep work' }, TODAY).error);
 });
 t('mergeCloud: live partial snapshot never pushes untouched data', () => {
   const l = { config: { updated: 5 }, days: { a: { updated: 10 }, b: { updated: 1 } } };
@@ -178,7 +178,7 @@ t('ops refuse overlaps', () => {
 t('my-routine.json loads', () => {
   if (!fs.existsSync(__dirname + '/my-routine.json')) return;
   const o = JSON.parse(read('my-routine.json')); const m = X.mergeConfig(o.config);
-  assert(m.rules.length && m.templates.length);
+  assert(m.rules.length && m.templates.every(x => x.deleted));
   for (let i = 0; i < 7; i++) { const k = X.addDays('2026-10-05', i); const d = X.buildDay(m, k); assert(d.blocks.length > 3, k); const o = noOverlap(d); assert(!o, 'my-routine ' + k + ': ' + o); }
 });
 
