@@ -278,6 +278,7 @@ function bindGrid(host, cols, mode, ppm, h) {
         st.el.style.top = ((start - s.dayStart) * ppm) + 'px';
         if (cols.length > 1) { const k = colAt(ev.clientX); if (k != null && k !== toCi && cols[k].editable) { toCi = k; colEls[k].appendChild(st.el); st.el.style.left = '3px'; st.el.style.width = 'calc(100% - 6px)'; } }
       }
+      st.el.classList.toggle('clash', !!X.clashWith(cols[toCi].blocks, { start, dur }, st.b.id));
       const m = st.el.querySelector('.b-m'); if (m) m.textContent = hm(start) + '–' + hm(start + dur) + ' · ' + durTxt(dur);
     };
     const cleanup = () => {
@@ -316,27 +317,31 @@ function bindGrid(host, cols, mode, ppm, h) {
   }
 }
 const sortBlocks = d => d.blocks.sort((a, b) => a.start - b.start);
+const clashTxt = c => c.title + ' ' + hm(c.start) + '–' + hm(c.start + c.dur);
+function fitDur(blocks, start, dur) { const nxt = blocks.filter(X.live).filter(b => b.start >= start).reduce((m, b) => Math.min(m, b.start), 1440); return Math.max(5, Math.min(dur, nxt - start)); }
 const dayHandlers = {
   onCommit({ c, b, to, start, dur }) {
     UNLOCKED.clear();
     const from = c.day, dest = to.day;
     const fb = from.blocks.find(x => x.id === b.id); if (!fb) return render();
+    const cl = X.live(fb) ? X.clashWith(dest.blocks, { start, dur }, fb.id) : null;
+    if (cl) { render(); return toast('Overlaps ' + clashTxt(cl) + '. Pick a free slot.'); }
     fb.start = start; fb.dur = dur;
     if (dest !== from) { from.blocks = from.blocks.filter(x => x !== fb); dest.blocks.push(fb); sortBlocks(dest); saveDay(from); saveDay(dest); toast('Moved to ' + fmtShort(dest.date) + ' ' + hm(start)); }
     else { sortBlocks(from); saveDay(from); }
     render();
   },
   onOpen(c, b) { openBlock(c.day, b); },
-  onNew(c, start, dur) { openBlock(c.day, null, { start, dur }); },
+  onNew(c, start, dur) { openBlock(c.day, null, { start, dur: fitDur(c.blocks, start, dur) }); },
   onGap(c, gs, ge) { openWhatNow(c.day.date, { start: gs, end: ge }); },
   onAttach(c, b, ai, checked) { const d = c.day, x = d.blocks.find(y => y.id === b.id); x.attach = X.attachObjs(x.attach); x.attach[ai].done = checked; saveDay(d); },
   onHead(c) { CUR = c.date; setView('today'); },
 };
 function tplHandlers(tpl) {
   return {
-    onCommit({ b, start, dur }) { const x = tpl.blocks.find(y => y.id === b.id); x.start = start; x.dur = dur; bumpTpl(tpl); render(); },
+    onCommit({ b, start, dur }) { const x = tpl.blocks.find(y => y.id === b.id); const cl = X.clashWith(tpl.blocks, { start, dur }, x.id); if (cl) { render(); return toast('Overlaps ' + clashTxt(cl) + '. Pick a free slot.'); } x.start = start; x.dur = dur; bumpTpl(tpl); render(); },
     onOpen(c, b) { openBlock(null, b, null, tpl); },
-    onNew(c, start, dur) { openBlock(null, null, { start, dur }, tpl); },
+    onNew(c, start, dur) { openBlock(null, null, { start, dur: fitDur(tpl.blocks, start, dur) }, tpl); },
     onGap() {}, onAttach() {},
   };
 }
@@ -358,7 +363,8 @@ function openBlock(d, b, preset, tpl) {
   const lateNew = isNew && d && (d.date < t || (d.date === t && preset.start + preset.dur <= nowMin()));
   const durs = DURS.includes(src.dur) ? DURS : DURS.concat([src.dur]).sort((a, c) => a - c);
   const item = b && b.itemId ? CFG.items.find(i => i.id === b.itemId) : null;
-  const canBackup = d && b && b.pillar && b.backup != null && !b.strict && b.status !== 'moved' && !d.blocks.some(x => x.of === b.id);
+  const bkAt = d && b && b.pillar && b.backup != null && !b.strict ? X.backupSlot(d, b, d.date === t ? nowMin() : 0) : null;
+  const canBackup = bkAt != null && b.status !== 'moved' && !d.blocks.some(x => x.of === b.id);
   const html = '<div class="sh-h"><h2>' + (isNew ? 'New block' : 'Edit block') + '</h2><span class="muted small">' + (d ? fmtShort(d.date) : esc(tpl.name) + ' template') + '</span><button class="iconbtn" data-x aria-label="Close">×</button></div>'
     + '<div class="form">'
     + (b && b.src === 'rule' ? '<div class="hint">From your routine. Changes here change this day only. To change every day, edit it in Routine.</div>' : '')
@@ -375,16 +381,17 @@ function openBlock(d, b, preset, tpl) {
     + '<label class="field"><span>Small things attached (comma separated)</span><input id="bAttach" type="text" value="' + esc(X.attachObjs(src.attach).map(a => a.t).join(', ')) + '" placeholder="e.g. 10 min walk, stretch"></label>'
     + (d ? '<label class="field"><span>Note</span><input id="bNote" type="text" value="' + esc(src.note || '') + '"></label>' : '')
     + (d && !isNew ? '<div class="field"><span>How did it go?</span><div class="stbtns">' + ['done', 'skipped'].map(s => '<button type="button" data-st="' + s + '" class="' + (b.status === s ? 'on' : '') + '">' + { done: 'Done', skipped: 'Skipped' }[s] + '</button>').join('') + '</div></div>' : '')
-    + (canBackup ? '<button type="button" class="btn" data-backup>Use backup at ' + hm(Math.max(b.backup, d.date === t ? Math.ceil(nowMin() / 15) * 15 : 0)) + '</button>' : '')
+    + (canBackup ? '<button type="button" class="btn" data-backup>Use backup at ' + hm(bkAt) + '</button>' : '')
     + (item && item.kind === 'dream' ? '<label class="check"><input id="bDream" type="checkbox"' + (item.done ? ' checked' : '') + '> Dream done, tick it off in the bank</label>' : '')
     + (isNew && d ? '<label class="check"><input id="bUnpl" type="checkbox"' + (lateNew ? ' checked' : '') + '> Unplanned (this is what really happened)</label>' : '')
+    + '<div class="al alert" id="bErr" hidden></div>'
     + '</div><div class="sh-f">' + (!isNew ? '<button class="btn danger l" data-del>Delete</button>' : '') + '<button class="btn" data-x>Cancel</button><button class="btn pri" data-save>Save</button></div>';
   openSheet(html, sh => {
     let status = b ? b.status : 'planned';
     $('#bPillar', sh).onchange = e => { $('#bPillarRow', sh).hidden = !e.target.checked; };
     $$('[data-st]', sh).forEach(btn => { btn.onclick = () => { status = status === btn.dataset.st ? 'planned' : btn.dataset.st; $$('[data-st]', sh).forEach(x => x.classList.toggle('on', x.dataset.st === status)); }; });
     const bk = $('[data-backup]', sh);
-    if (bk) bk.onclick = () => { const at = Math.max(b.backup, d.date === t ? Math.ceil(nowMin() / 15) * 15 : 0); X.useBackup(d, b.id, at); saveDay(d); closeSheet(); render(); toast(b.title + ' moved to backup ' + hm(at)); };
+    if (bk) bk.onclick = () => { const at = bkAt; X.useBackup(d, b.id, at); saveDay(d); closeSheet(); render(); toast(b.title + ' moved to backup ' + hm(at)); };
     const del = $('[data-del]', sh);
     if (del) del.onclick = () => {
       if (tpl) { tpl.blocks = tpl.blocks.filter(x => x.id !== b.id); bumpTpl(tpl); }
@@ -400,6 +407,9 @@ function openBlock(d, b, preset, tpl) {
       const names = $('#bAttach', sh).value.split(',').map(x => x.trim()).filter(Boolean);
       const oldAtt = X.attachObjs(src.attach);
       const vals = { title, cat: $('#bCat', sh).value, start: clamp(start, 0, 1439), dur, mit: $('#bMit', sh).checked, pillar, strict, checks: $('#bChecks', sh).checked, backup: pillar && !strict && bv ? toMin(bv) : null };
+      const willLive = tpl || (isNew ? true : status !== 'skipped' && status !== 'moved');
+      const cl = willLive ? X.clashWith(tpl ? tpl.blocks : d.blocks, { start: vals.start, dur }, b ? b.id : null) : null;
+      if (cl) { const er = $('#bErr', sh); er.hidden = false; er.textContent = 'Overlaps ' + clashTxt(cl) + '. Change the start or the length.'; return; }
       if (tpl) {
         vals.attach = names;
         if (isNew) tpl.blocks.push(Object.assign({ id: uid() }, vals)); else Object.assign(tpl.blocks.find(x => x.id === b.id), vals);
@@ -472,9 +482,10 @@ function openWhatNow(date, gap) {
       bt.onclick = () => {
         const title = CFG.boredom[+bt.dataset.bo];
         const mm = /(\d+)\s*min/i.exec(title); const dur = mm ? Math.max(5, +mm[1]) : 15;
-        const dd = DAYS[t] || day(t); const start = Math.floor(nowMin() / 5) * 5;
-        dd.blocks.push({ id: uid(), start, dur, title, cat: boredCat(title), src: 'bank', status: 'planned', attach: [], pillar: false, mit: false });
-        sortBlocks(dd); saveDay(dd); closeSheet(); render(); toast('Go: ' + title);
+        const dd = DAYS[t] || day(t);
+        const nb = X.placeBlock(CFG, dd, { title, min: dur, cat: boredCat(title), src: 'bank' }, Math.floor(nowMin() / 5) * 5);
+        if (!nb) return toast('No free ' + durTxt(dur) + ' left today.');
+        saveDay(dd); closeSheet(); render(); toast('Go: ' + title + ' at ' + hm(nb.start));
       };
     });
   });
@@ -509,7 +520,9 @@ function openClose(date) {
     $$('.closer', sh).forEach(r => { $$('[data-s]', r).forEach(bt => { bt.onclick = () => { d.blocks.find(b => b.id === r.dataset.id).status = bt.dataset.s; saveDay(d); $$('[data-s]', r).forEach(x => x.classList.toggle('on', x === bt)); }; }); });
     $('[data-addu]', sh).onclick = () => {
       const title = $('#uTitle', sh).value.trim(); if (!title) return $('#uTitle', sh).focus();
-      d.blocks.push({ id: uid(), start: toMin($('#uStart', sh).value), dur: +$('#uDur', sh).value, title, cat: $('#uCat', sh).value, src: 'manual', status: 'done', unplanned: true, attach: [], pillar: false, mit: false });
+      const us = toMin($('#uStart', sh).value), ud = +$('#uDur', sh).value, ucl = X.clashWith(d.blocks, { start: us, dur: ud });
+      if (ucl) return toast('Overlaps ' + clashTxt(ucl) + '. Mark that one skipped first, or change the time.', null, null, 7000);
+      d.blocks.push({ id: uid(), start: us, dur: ud, title, cat: $('#uCat', sh).value, src: 'manual', status: 'done', unplanned: true, attach: [], pillar: false, mit: false });
       sortBlocks(d); saveDay(d); toast('Added: ' + title); openClose(date);
     };
     $('[data-save]', sh).onclick = () => {
@@ -571,7 +584,7 @@ function fitHtml(d) {
   if (needMin > freeMin * (1 - s.buffer) && open.length) h += '<div class="al warn" style="margin:8px 12px">' + durTxt(needMin) + ' to fit but only ' + durTxt(freeMin) + ' free. Pick what matters, move the rest to another day.</div>';
   h += todos.map(x => {
     const b = blockOf(d, x), done = x.done || (b && b.status === 'done'), c = catOf(CFG, x.cat);
-    return '<div class="fit-row ' + (done ? 'done' : '') + '" style="--c:' + c.color + '"><button type="button" class="fit-chk" data-act="fitdone" data-id="' + x.id + '" aria-label="Mark done">' + (done ? '✓' : '') + '</button>'
+    return '<div class="fit-row ' + (done ? 'done' : '') + (b || done ? '' : ' drag') + '" style="--c:' + c.color + '"' + (b || done ? '' : ' data-drag="todo:' + x.id + '" data-label="' + esc(x.title) + '"') + '><button type="button" class="fit-chk" data-act="fitdone" data-id="' + x.id + '" aria-label="Mark done">' + (done ? '✓' : '') + '</button>'
       + '<div class="ag-main"><div class="ag-title"><span>' + esc(x.title) + '</span></div><div class="ag-meta">' + durTxt(x.min || 30) + ' · ' + esc(c.name) + (b ? ' · at ' + hm(b.start) : '') + (x.by === 'saarthi' ? ' · from Saarthi' : '') + '</div></div>'
       + (b || done ? '<span></span>' : '<button type="button" class="btn sm pri" data-act="fitplace" data-id="' + x.id + '">Place</button>')
       + '<button type="button" class="ag-lock" data-act="fitdel" data-id="' + x.id + '" aria-label="Remove">×</button></div>';
@@ -590,9 +603,10 @@ function fitHtml(d) {
   SUGS = big && slots > opsShown.length ? X.suggest(CFG, STORE, TF, d.date, big, t, 8).filter(x => !hide.includes(x.item.id) && !titles.has(norm(x.item.title))).slice(0, slots - opsShown.length).map(x => Object.assign(x, { gap: big })) : [];
   if (opsShown.length || SUGS.length) {
     h += '<div class="fit-sub">Saarthi suggests</div>';
-    h += opsShown.map(({ o, i }) => '<div class="fit-row sug"><span class="ag-dot" style="--c:var(--accent)"></span><div class="ag-main"><div class="ag-title"><span>' + esc(o.label) + '</span></div><div class="ag-meta">Saarthi' + (o.why ? ' · ' + esc(o.why) : '') + '</div></div><button type="button" class="btn sm pri" data-act="opacc" data-i="' + i + '">Accept</button><button type="button" class="ag-lock" data-act="oprej" data-i="' + i + '" aria-label="Reject">×</button></div>').join('');
-    h += SUGS.map((sg, i) => { const c = catOf(CFG, sg.item.cat); return '<div class="fit-row sug" style="--c:' + c.color + '"><span class="ag-dot"></span><div class="ag-main"><div class="ag-title"><span>' + esc(sg.item.title) + '</span></div><div class="ag-meta">' + durTxt(sg.min) + ' at ' + hm(sg.gap.start) + ' · ' + esc(sg.why) + '</div></div><button type="button" class="btn sm" data-act="sugacc" data-i="' + i + '">Accept</button><button type="button" class="ag-lock" data-act="sughide" data-id="' + esc(sg.item.id) + '" aria-label="Not today">×</button></div>'; }).join('');
+    h += opsShown.map(({ o, i }) => '<div class="fit-row sug' + (o.op.type === 'addBlock' ? ' drag" data-drag="op:' + i + '" data-label="' + esc(o.op.block.title) : '') + '"><span class="ag-dot" style="--c:var(--accent)"></span><div class="ag-main"><div class="ag-title"><span>' + esc(o.label) + '</span></div><div class="ag-meta">Saarthi' + (o.why ? ' · ' + esc(o.why) : '') + '</div></div><button type="button" class="btn sm pri" data-act="opfit" data-i="' + i + '">Accept</button><button type="button" class="ag-lock" data-act="oprej" data-i="' + i + '" aria-label="Reject">×</button></div>').join('');
+    h += SUGS.map((sg, i) => { const c = catOf(CFG, sg.item.cat); return '<div class="fit-row sug drag" style="--c:' + c.color + '" data-drag="sug:' + i + '" data-label="' + esc(sg.item.title) + '"><span class="ag-dot"></span><div class="ag-main"><div class="ag-title"><span>' + esc(sg.item.title) + '</span></div><div class="ag-meta">' + durTxt(sg.min) + ' at ' + hm(sg.gap.start) + ' · ' + esc(sg.why) + '</div></div><button type="button" class="btn sm" data-act="sugacc" data-i="' + i + '">Accept</button><button type="button" class="ag-lock" data-act="sughide" data-id="' + esc(sg.item.id) + '" aria-label="Not today">×</button></div>'; }).join('');
   }
+  if (todos.some(x => !x.done && !blockOf(d, x)) || SUGS.length || opsShown.length) h += '<div class="fit-hint">Drag a task onto the calendar, or tap Place.</div>';
   return h + '</div>';
 }
 function fitAdd() {
@@ -602,6 +616,80 @@ function fitAdd() {
   d.todo = (d.todo || []).concat({ id: uid(), title, min: +$('#fitMin').value, cat: $('#fitCat').value, done: false });
   saveDay(d); render();
   const n = $('#fitTitle'); if (n) n.focus();
+}
+function fitItem(key) {
+  const d = AG_DAY; if (!d) return null;
+  const [kind, ref] = key.split(':');
+  if (kind === 'todo') { const x = (d.todo || []).find(y => y.id === ref); return x && { kind, x, title: x.title, min: x.min || 30, cat: x.cat }; }
+  if (kind === 'sug') { const sg = SUGS[+ref]; return sg && { kind, sg, title: sg.item.title, min: sg.min, cat: sg.item.cat, itemId: sg.item.id }; }
+  if (kind === 'op') { const o = INBOX && INBOX.ops[+ref]; return o && o.op.type === 'addBlock' && { kind, o, title: o.op.block.title, min: o.op.block.dur || 30, cat: o.op.block.cat || 'goal', at: o.op.block.start }; }
+  return null;
+}
+function openPlace(key, start) {
+  const d = AG_DAY, it = fitItem(key), s = CFG.settings; if (!d || !it) return;
+  if (start == null) start = it.at != null ? it.at : ((X.gaps(d.blocks, fitFrom(d), s.bedtime, it.min)[0] || {}).start);
+  if (start == null) start = fitFrom(d);
+  const durs = DURS.includes(it.min) ? DURS : DURS.concat(it.min).sort((a, b) => a - b);
+  const html = '<div class="sh-h"><h2>Place on calendar</h2><span class="muted small">' + fmtShort(d.date) + '</span><button class="iconbtn" data-x aria-label="Close">×</button></div>'
+    + '<div class="form"><div class="row"><span class="chip" style="--c:' + catOf(CFG, it.cat).color + '"><i></i>' + esc(catOf(CFG, it.cat).name) + '</span><b>' + esc(it.title) + '</b></div>'
+    + '<div class="grid2"><label class="field"><span>Start</span><input id="pStart" type="time" step="300" value="' + hm(start) + '"></label>'
+    + '<label class="field"><span>Length</span><select id="pDur">' + durs.map(x => '<option value="' + x + '"' + (x === it.min ? ' selected' : '') + '>' + durTxt(x) + '</option>').join('') + '</select></label></div>'
+    + '<div class="al alert" id="pErr" hidden></div></div>'
+    + '<div class="sh-f"><button class="btn" data-x>Cancel</button><button class="btn pri" data-go>Place</button></div>';
+  openSheet(html, sh => {
+    const go = () => {
+      const st = toMin($('#pStart', sh).value), du = +$('#pDur', sh).value, er = $('#pErr', sh);
+      const cl = X.clashWith(d.blocks, { start: st, dur: du });
+      if (cl) { er.hidden = false; er.textContent = 'Overlaps ' + clashTxt(cl) + '. Pick another time.'; return; }
+      if (st + du > s.dayEnd) { er.hidden = false; er.textContent = 'Ends after ' + hm(s.dayEnd) + '. Pick an earlier time.'; return; }
+      const before = clone(d);
+      const b = { id: uid(), start: st, dur: du, title: it.title, cat: it.cat, status: 'planned', attach: [], pillar: false, mit: false, src: it.kind === 'todo' ? 'todo' : it.kind === 'op' ? 'saarthi' : 'bank' };
+      if (it.itemId) b.itemId = it.itemId;
+      d.blocks.push(b); sortBlocks(d);
+      if (it.kind === 'todo') { it.x.placed = b.id; it.x.min = du; }
+      else if ((d.todo || []).length < FIT_MAX) d.todo = (d.todo || []).concat({ id: uid(), title: it.title, min: du, cat: it.cat, done: false, by: 'saarthi', placed: b.id });
+      saveDay(d);
+      if (it.kind === 'op') { it.o.state = 'accepted'; it.o.decidedAt = Date.now(); if (window.DBXFB) DBXFB.pushInbox(fsSafe(INBOX)).catch(() => {}); }
+      closeSheet(); render();
+      toast(it.title + ' placed at ' + hm(st), 'Undo', () => { saveDay(before); render(); });
+    };
+    $('[data-go]', sh).onclick = go;
+    sh.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); go(); } };
+  });
+}
+function bindFitDrag(ppm) {
+  const box = $('.ag.fit'), grid = $('#dayGrid'); if (!box || !grid) return;
+  box.onpointerdown = e => {
+    const row = e.target.closest('[data-drag]');
+    if (!row || e.button > 0 || e.target.closest('button,input,select')) return;
+    const touch = e.pointerType === 'touch', x0 = e.clientX, y0 = e.clientY;
+    let armed = !touch, ghost = null, lp = null, at = null;
+    if (touch) lp = setTimeout(() => { armed = true; row.classList.add('lifting'); try { navigator.vibrate && navigator.vibrate(12); } catch (_) {} }, 260);
+    else e.preventDefault();
+    const tm = ev => { if (armed) ev.preventDefault(); };
+    const mv = ev => {
+      if (!armed) { if (Math.hypot(ev.clientX - x0, ev.clientY - y0) > 8) off(); return; }
+      if (!ghost) { if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 5) return; ghost = document.createElement('div'); ghost.className = 'drag-ghost'; document.body.appendChild(ghost); DRAGGING = true; }
+      ghost.style.left = (ev.clientX + 12) + 'px'; ghost.style.top = (ev.clientY + 10) + 'px';
+      const gr = grid.getBoundingClientRect();
+      if (ev.clientX >= gr.left && ev.clientX <= gr.right) { if (ev.clientY < gr.top + 36) grid.scrollTop -= 14; else if (ev.clientY > gr.bottom - 36) grid.scrollTop += 14; }
+      const col = grid.querySelector('.g-col'), r = col.getBoundingClientRect();
+      const inside = ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= Math.max(r.top, gr.top) && ev.clientY <= Math.min(r.bottom, gr.bottom);
+      at = inside ? clamp(Math.floor((CFG.settings.dayStart + (ev.clientY - r.top) / ppm) / 15) * 15, CFG.settings.dayStart, CFG.settings.dayEnd - 15) : null;
+      ghost.classList.toggle('over', inside);
+      ghost.textContent = row.dataset.label + (at != null ? ' · ' + hm(at) : ' · drop on the calendar');
+    };
+    const up = () => { const drop = at; const was = !!ghost; off(); if (was && drop != null) openPlace(row.dataset.drag, drop); };
+    const off = () => {
+      clearTimeout(lp);
+      removeEventListener('pointermove', mv); removeEventListener('pointerup', up); removeEventListener('pointercancel', off);
+      document.removeEventListener('touchmove', tm);
+      row.classList.remove('lifting'); if (ghost) ghost.remove(); ghost = null;
+      setTimeout(() => { DRAGGING = false; }, 0);
+    };
+    document.addEventListener('touchmove', tm, { passive: false });
+    addEventListener('pointermove', mv); addEventListener('pointerup', up); addEventListener('pointercancel', off);
+  };
 }
 function viewToday() {
   const t = today(), d = day(CUR), isToday = CUR === t, past = CUR < t, s = CFG.settings, nm = nowMin();
@@ -650,7 +738,7 @@ function viewToday() {
   // one calendar only: the To fit list sits beside (laptop) or above (phone) the timeline
   const fit = fitHtml(d);
   if (phone || !fit) body = top + fit + grid + hint;
-  else body = top + '<div class="tsplit"><div class="tleft">' + fit + '</div><div class="tright">' + grid + hint + '</div></div>';
+  else body = top + '<div class="tsplit"><div class="tleft">' + grid + hint + '</div><div class="tright">' + fit + '</div></div>';
   const showGrid = true;
   return {
     title: isToday ? 'Today' : fmtShort(CUR), sub: fmtLong(CUR) + (d.tpl ? ' · ' + esc(d.tpl.name) : ''), actions, body,
@@ -659,6 +747,7 @@ function viewToday() {
       if (!showGrid) return;
       const gw = $('#dayGrid');
       bindGrid(gw, [col], 'day', ppm, dayHandlers);
+      bindFitDrag(ppm);
       if (SCROLL_NOW) {
         SCROLL_NOW = false;
         const first = d.blocks.filter(b => b.cat !== 'sleep').reduce((m, b) => Math.min(m, b.start), 1440);
@@ -736,6 +825,14 @@ function savePlan() {
     const item = CFG.items.find(i => norm(i.title) === norm(text));
     wp[c.dataset.k] = { text, date: g('date'), start: toMin(g('start')), dur: +g('dur'), itemId: item ? item.id : null };
   });
+  const base = Object.assign({}, CFG, { weekPlans: {} });
+  const L = X.WEEK_SLOTS;
+  for (const k of Object.keys(wp)) {
+    const v = wp[k], cand = { start: v.start, dur: v.dur };
+    const fixed = X.buildDay(base, v.date).blocks.filter(b => b.src === 'rule' && !((k === 'little' && /little adventure/i.test(b.title)) || (k === 'younight' && /you-?night/i.test(b.title))));
+    const cl = X.clashWith(fixed, cand) || Object.keys(wp).filter(j => j !== k && wp[j].date === v.date).map(j => ({ title: L[j].label, start: wp[j].start, dur: wp[j].dur })).find(o => X.overlaps(o, cand));
+    if (cl) return toast(L[k].label + ' on ' + fmtShort(v.date) + ' overlaps ' + clashTxt(cl) + '. Change its time.', null, null, 8000);
+  }
   CFG.weekPlans[ws] = wp; saveCfg();
   for (let i = 0; i < 7; i++) {
     const date = addDays(ws, i), d = DAYS[date];
@@ -904,6 +1001,8 @@ function openRule(id) {
       const title = $('#rTitle', sh).value.trim(); if (!title) return $('#rTitle', sh).focus();
       const pillar = $('#rPillar', sh).checked, strict = pillar && $('#rStrict', sh).checked, bv = $('#rBackup', sh).value;
       const patch = { title, cat: $('#rCat', sh).value, start: toMin($('#rStart', sh).value), dur: +$('#rDur', sh).value, days, pillar, strict, backup: pillar && !strict && bv ? toMin(bv) : null, attach: $('#rAttach', sh).value.split(',').map(x => x.trim()).filter(Boolean) };
+      const rc = X.ruleClash(CFG, Object.assign({ id: id || '_new' }, patch), id, t);
+      if (rc) return toast('Overlaps recurring ' + rc.title + ' ' + hm(rc.start) + '–' + hm(rc.start + rc.dur) + ' on a shared day.', null, null, 7000);
       if (!id) CFG.rules.push(Object.assign({ id: uid(), from: t, to: null }, patch));
       else {
         const nr = X.editRule(CFG, id, patch, t);
@@ -1159,10 +1258,19 @@ const ACTS = {
   next: () => { CUR = addDays(CUR, 1); SCROLL_NOW = true; render(); },
   noop: () => {},
   fitadd: fitAdd,
-  fitplace: a => { const d = AG_DAY, x = d && (d.todo || []).find(y => y.id === a.dataset.id); if (!x) return; const before = clone(d); const b = X.placeBlock(CFG, d, x, fitFrom(d)); if (!b) return toast('No free slot of ' + durTxt(x.min || 30) + ' left. Shorten it or move it to another day.'); x.placed = b.id; saveDay(d); render(); toast(x.title + ' placed at ' + hm(b.start), 'Undo', () => { saveDay(before); render(); }); },
+  fitplace: a => openPlace('todo:' + a.dataset.id, null),
   fitdone: a => { const d = AG_DAY, x = d && (d.todo || []).find(y => y.id === a.dataset.id); if (!x) return; const b = blockOf(d, x); x.done = !(x.done || (b && b.status === 'done')); if (b) b.status = x.done ? 'done' : 'planned'; saveDay(d); render(); },
   fitdel: a => { const d = AG_DAY; if (!d) return; const before = clone(d); d.todo = (d.todo || []).filter(y => y.id !== a.dataset.id); saveDay(d); render(); toast('Removed from the list', 'Undo', () => { saveDay(before); render(); }); },
-  sugacc: a => { const d = AG_DAY, sg = SUGS[+a.dataset.i]; if (!d || !sg) return; const before = clone(d); if ((d.todo || []).length >= FIT_MAX) return toast(FIT_MAX + ' is the limit for a day.'); const b = X.placeBlock(CFG, d, { title: sg.item.title, min: sg.min, cat: sg.item.cat, src: 'bank', itemId: sg.item.id }, sg.gap.start); if (!b) return toast('That slot is gone.'); d.todo = (d.todo || []).concat({ id: uid(), title: sg.item.title, min: sg.min, cat: sg.item.cat, done: false, by: 'saarthi', placed: b.id }); saveDay(d); render(); toast(sg.item.title + ' at ' + hm(b.start), 'Undo', () => { saveDay(before); render(); }); },
+  sugacc: a => { const d = AG_DAY, sg = SUGS[+a.dataset.i]; if (!d || !sg) return; if ((d.todo || []).length >= FIT_MAX) return toast(FIT_MAX + ' is the limit for a day.'); d.todo = (d.todo || []).concat({ id: uid(), title: sg.item.title, min: sg.min, cat: sg.item.cat, done: false, by: 'saarthi' }); saveDay(d); render(); toast('Added to To fit. Place it when you are ready.'); },
+  opfit: async a => {
+    const i = +a.dataset.i, o = INBOX && INBOX.ops[i], d = AG_DAY; if (!o || !d) return;
+    if (o.op.type !== 'addBlock') return decideOp(i, true);
+    if ((d.todo || []).length >= FIT_MAX) return toast(FIT_MAX + ' is the limit for a day.');
+    d.todo = (d.todo || []).concat({ id: uid(), title: o.op.block.title, min: o.op.block.dur || 30, cat: o.op.block.cat || 'goal', done: false, by: 'saarthi' });
+    saveDay(d); o.state = 'accepted'; o.decidedAt = Date.now();
+    try { await DBXFB.pushInbox(fsSafe(INBOX)); } catch (e) {}
+    render(); toast('Added to To fit. Place it when you are ready.');
+  },
   sughide: a => { const d = AG_DAY; if (!d) return; d.sugHide = (d.sugHide || []).concat(a.dataset.id); saveDay(d); render(); },
   tips: () => { TIPS_OPEN = !TIPS_OPEN; render(); },
   gotoday: () => { CUR = today(); SCROLL_NOW = true; render(); },

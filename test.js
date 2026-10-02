@@ -21,6 +21,7 @@ const X = ctx.DBX;
 const cfg = X.seedConfig();
 const TODAY = '2026-10-01'; // Thursday
 const store = { days: {} };
+const noOverlap = d => { const L = d.blocks.filter(X.live).sort((a, b) => a.start - b.start); for (let i = 1; i < L.length; i++) if (L[i].start < L[i - 1].start + L[i - 1].dur) return L[i - 1].title + ' x ' + L[i].title; return null; };
 
 t('week is Monday-Sunday', () => { assert.strictEqual(X.weekStart('2026-10-05'), '2026-10-05'); assert.strictEqual(X.weekStart('2026-10-04'), '2026-09-28'); });
 t('merge: user values override seeds', () => {
@@ -40,7 +41,7 @@ t('template edit never changes a stored day', () => {
   const c = X.clone(cfg), s = { days: {} };
   const d = X.buildDay(c, TODAY); d.virtual = false; s.days[TODAY] = d;
   c.templates[0].blocks[0].start = 300; c.templates[0].version++;
-  assert.strictEqual(X.getDay(s, c, TODAY, TODAY).blocks.find(b => b.title === 'Deep work').start, 570);
+  assert.strictEqual(X.getDay(s, c, TODAY, TODAY).blocks.find(b => b.title === 'Deep work').start, 575);
   assert.strictEqual(X.getDay(s, c, '2026-10-05', TODAY).blocks.find(b => b.title === 'Deep work').start, 300);
 });
 t('past untouched day is untracked, not rebuilt', () => { const d = X.getDay(store, cfg, '2026-09-20', TODAY); assert(d.untracked); assert.strictEqual(d.blocks.length, 0); });
@@ -78,7 +79,7 @@ t('backup flow', () => {
   const d = X.buildDay(cfg, TODAY); const mp = d.blocks.find(b => b.title === 'Morning pillar');
   const offers = X.backupOffers(d, 700); assert.strictEqual(offers.length, 1); assert.strictEqual(offers[0].at, 1080);
   assert(!X.backupOffers(d, 700).some(o => o.block.title === 'Evening pillar'));
-  const nb = X.useBackup(d, mp.id, 1080); assert.strictEqual(mp.status, 'moved'); assert.strictEqual(nb.start, 1080);
+  const nb = X.useBackup(d, mp.id, 1080); assert.strictEqual(mp.status, 'moved'); assert.strictEqual(nb.start, 1080); assert(!noOverlap(d), noOverlap(d));
   assert.strictEqual(X.backupOffers(d, 1200).filter(o => o.block.title === 'Morning pillar').length, 0);
   nb.status = 'done'; const st = X.dayStats(cfg, d); assert.strictEqual(st.pillarsKept, 1);
 });
@@ -114,7 +115,7 @@ t('mergeCloud: newer wins per doc', () => {
 });
 t('applyOp: day + template + errors', () => {
   const c = X.clone(cfg), s = { days: {} };
-  const r1 = X.applyOp(c, s, { type: 'addBlock', date: '2026-10-05', block: { start: 600, dur: 30, title: 'Guitar', cat: 'hobby' } }, TODAY);
+  const r1 = X.applyOp(c, s, { type: 'addBlock', date: '2026-10-05', block: { start: 1290, dur: 30, title: 'Guitar', cat: 'hobby' } }, TODAY);
   assert(r1.day.blocks.some(b => b.title === 'Guitar')); assert.strictEqual(Object.keys(s.days).length, 0);
   const r2 = X.applyOp(c, s, { type: 'editTemplateBlock', tpl: 'Workday', title: 'Deep work', start: 600 }, TODAY);
   assert(r2.cfg); assert.strictEqual(c.templates[0].blocks[0].start, 600); assert.strictEqual(c.templates[0].version, 2);
@@ -158,11 +159,27 @@ t('placeBlock + addTodo', () => {
   const r = X.applyOp(c, s, { type: 'addTodo', date: '2026-10-05', todo: { title: 'Call bank', min: 15 } }, TODAY);
   assert.strictEqual(r.day.todo[0].title, 'Call bank');
 });
+t('routine never produces overlaps (seeds)', () => { for (let i = 0; i < 7; i++) { const k = X.addDays('2026-10-05', i); const o = noOverlap(X.buildDay(cfg, k)); assert(!o, k + ': ' + o); } });
+t('carve splits around a recurring block', () => {
+  const p = X.carve([{ id: 'w', start: 660, dur: 120, title: 'Work', attach: [{ t: 'x' }] }], [{ start: 690, dur: 30 }]);
+  assert.strictEqual(JSON.stringify(p.map(x => [x.start, x.dur])), '[[660,30],[720,60]]'); assert.strictEqual(p[0].id, 'w'); assert.strictEqual(p[1].attach.length, 0);
+  assert.strictEqual(X.carve([{ id: 'a', start: 600, dur: 20 }], [{ start: 605, dur: 10 }]).length, 0);
+});
+t('ops refuse overlaps', () => {
+  const c = X.clone(cfg), s = { days: {} };
+  assert(X.applyOp(c, s, { type: 'addBlock', date: '2026-10-05', block: { start: 540, dur: 30, title: 'X', cat: 'goal' } }, TODAY).error);
+  assert(X.applyOp(c, s, { type: 'addRule', rule: { title: 'Clash', cat: 'office', start: 550, dur: 30, days: [1] } }, TODAY).error);
+  assert(X.applyOp(c, s, { type: 'moveBlock', date: '2026-10-05', title: 'Kids slot', start: 1140 }, TODAY).error);
+  const d = X.buildDay(c, TODAY); const mp = d.blocks.find(b => b.title === 'Morning pillar');
+  d.blocks = d.blocks.filter(b => b.title !== 'Clock off'); d.blocks.push({ id: 'z', start: 1080, dur: 60, title: 'Busy', cat: 'goal', status: 'done' });
+  const off = X.backupOffers(d, 700).find(o => o.block === mp); assert.strictEqual(off.at, 1230);
+  X.useBackup(d, mp.id, off.at); assert(!noOverlap(d), noOverlap(d));
+});
 t('my-routine.json loads', () => {
   if (!fs.existsSync(__dirname + '/my-routine.json')) return;
   const o = JSON.parse(read('my-routine.json')); const m = X.mergeConfig(o.config);
   assert(m.rules.length && m.templates.length);
-  ['2026-10-01', '2026-10-02', '2026-10-03', '2026-10-05'].forEach(k => { const d = X.buildDay(m, k); assert(d.blocks.length > 3, k); });
+  for (let i = 0; i < 7; i++) { const k = X.addDays('2026-10-05', i); const d = X.buildDay(m, k); assert(d.blocks.length > 3, k); const o = noOverlap(d); assert(!o, 'my-routine ' + k + ': ' + o); }
 });
 
 console.log(pass + ' passed, ' + fail + ' failed');

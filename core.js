@@ -139,21 +139,46 @@ function weekItemsFor(cfg, date) {
     return { wk: k, title: m.label + ': ' + v.text, cat: v.cat || m.cat, start: v.start, dur: v.dur || m.dur, attach: [] };
   });
 }
+/* ---------- no overlaps: helpers ---------- */
+const overlaps = (a, b) => a.start < b.start + b.dur && b.start < a.start + a.dur;
+function clashWith(blocks, cand, ignoreId) {
+  return blocks.find(b => b.id !== ignoreId && b.status !== 'skipped' && b.status !== 'moved' && overlaps(b, cand)) || null;
+}
+/* cut the cutters' time out of the base blocks; leftovers under minLen are dropped */
+function carve(base, cutters, minLen) {
+  minLen = minLen == null ? 10 : minLen;
+  const out = [];
+  base.forEach(b => {
+    let pieces = [[b.start, b.start + b.dur]];
+    cutters.forEach(c => {
+      const cs = c.start, ce = c.start + c.dur;
+      pieces = pieces.reduce((acc, [s, e]) => { if (ce <= s || cs >= e) acc.push([s, e]); else { if (cs > s) acc.push([s, cs]); if (ce < e) acc.push([ce, e]); } return acc; }, []);
+    });
+    pieces.filter(([s, e]) => e - s >= minLen).forEach(([s, e], i) => out.push(Object.assign({}, b, { id: i ? uid() : b.id, start: s, dur: e - s, attach: i ? [] : b.attach })));
+  });
+  return out;
+}
+function ruleClash(cfg, rule, ignoreId, today) {
+  return cfg.rules.find(r => r.id !== ignoreId && r.id !== rule.id && ruleLive(r, today) && (r.days || []).some(d => (rule.days || []).includes(d)) && overlaps(r, rule)) || null;
+}
+
 function buildDay(cfg, date) {
   const t = templateFor(cfg, date);
   const rules = activeRules(cfg, date);
   const week = weekItemsFor(cfg, date);
   const ruleTitles = new Set(rules.map(r => norm(r.title)));
   const weekKinds = new Set(week.map(w => w.wk));
-  const blocks = [];
-  if (t) t.blocks.forEach(b => { if (!ruleTitles.has(norm(b.title))) blocks.push(blockFrom(b, { src: 'tpl' })); });
+  const blocks = [], fixed = [];
   rules.forEach(r => {
     // a Thursday-planned little adventure / you-night replaces the routine one that day
     if (weekKinds.has('little') && /little adventure/i.test(r.title)) return;
     if (weekKinds.has('younight') && /you-?night/i.test(r.title)) return;
-    blocks.push(blockFrom(r, { src: 'rule', ruleId: r.id }));
+    fixed.push(blockFrom(r, { src: 'rule', ruleId: r.id }));
   });
-  week.forEach(w => blocks.push(blockFrom(w, { src: 'week', wk: w.wk })));
+  week.forEach(w => fixed.push(blockFrom(w, { src: 'week', wk: w.wk })));
+  // template blocks make room for recurring + Thursday-plan blocks, so nothing overlaps
+  const tpl = t ? t.blocks.filter(b => !ruleTitles.has(norm(b.title))).map(b => blockFrom(b, { src: 'tpl' })) : [];
+  blocks.push(...fixed, ...carve(tpl, fixed));
   blocks.sort((a, b) => a.start - b.start);
   return { date, updated: 0, virtual: true, tpl: t ? { id: t.id, version: t.version || 1, name: t.name } : null, locked: false, plan: null, blocks, close: null, slipNote: '' };
 }
@@ -173,7 +198,8 @@ function lockIfDue(day, today) {
 function resetDay(cfg, day) {
   const fresh = buildDay(cfg, day.date);
   const keep = day.blocks.filter(b => b.src === 'manual' || b.src === 'bank' || b.src === 'backup' || b.unplanned || b.status !== 'planned');
-  const blocks = fresh.blocks.filter(f => !keep.some(k => norm(k.title) === norm(f.title))).concat(keep).sort((a, b) => a.start - b.start);
+  const kept = keep.filter(live);
+  const blocks = carve(fresh.blocks.filter(f => !keep.some(k => norm(k.title) === norm(f.title))), kept).concat(keep).sort((a, b) => a.start - b.start);
   return Object.assign({}, day, { blocks, tpl: fresh.tpl });
 }
 
@@ -304,10 +330,18 @@ function suggest(cfg, store, tf, date, gap, today, n) {
   for (const c of scored) { if (pick.length >= n) break; if (!pick.includes(c)) pick.push(c); }
   return pick;
 }
+/* first free slot at or after the backup time (and now) that fits the pillar */
+// a pillar backup only yields to other pillars and to blocks already marked; plain planned blocks make room
+const hardFor = (b, x) => x !== b && live(x) && (x.pillar || x.status !== 'planned');
+function backupSlot(day, b, nowMin) {
+  const from = Math.max(b.backup, Math.ceil(nowMin / 15) * 15);
+  const g = gaps(day.blocks.filter(x => hardFor(b, x)), from, 1440, b.dur)[0];
+  return g ? g.start : null;
+}
 function backupOffers(day, nowMin) {
   return day.blocks.filter(b => b.pillar && b.backup != null && !b.strict && (b.status === 'skipped' || (b.status === 'planned' && b.start + b.dur <= nowMin)))
     .filter(b => !day.blocks.some(x => x.of === b.id))
-    .map(b => ({ block: b, at: Math.max(b.backup, Math.ceil(nowMin / 15) * 15) }));
+    .map(b => ({ block: b, at: backupSlot(day, b, nowMin) })).filter(o => o.at != null);
 }
 function useBackup(day, blockId, at) {
   const b = day.blocks.find(x => x.id === blockId);
@@ -315,6 +349,8 @@ function useBackup(day, blockId, at) {
   b.status = 'moved';
   const nb = Object.assign(clone(b), { id: uid(), start: at, src: 'backup', status: 'planned', backup: null, of: b.id });
   nb.attach = attachObjs(b.attach).map(a => ({ t: a.t, done: false }));
+  const soft = day.blocks.filter(x => x !== b && live(x) && !hardFor(b, x));
+  day.blocks = day.blocks.filter(x => !soft.includes(x)).concat(carve(soft, [nb]));
   day.blocks.push(nb);
   day.blocks.sort((a, c) => a.start - c.start);
   return nb;
@@ -559,7 +595,10 @@ function applyOp(cfg, store, op, today) {
   const dayFor = date => { const d = clone(getDay(store, cfg, date, today)); d.virtual = false; delete d.untracked; return d; };
   if (op.type === 'addBlock') {
     const d = dayFor(op.date);
-    d.blocks.push(Object.assign({ id: uid(), status: 'planned', attach: [], src: 'saarthi' }, op.block));
+    const nb = Object.assign({ id: uid(), status: 'planned', attach: [], src: 'saarthi' }, op.block);
+    const cl = clashWith(d.blocks, nb);
+    if (cl && nb.status !== 'skipped') return { error: '"' + nb.title + '" overlaps ' + cl.title + ' ' + hm(cl.start) + '-' + hm(cl.start + cl.dur) };
+    d.blocks.push(nb);
     d.blocks.sort((a, b) => a.start - b.start);
     return { day: d };
   }
@@ -568,7 +607,12 @@ function applyOp(cfg, store, op, today) {
     const b = d.blocks.find(x => norm(x.title) === norm(op.title) && x.status === 'planned');
     if (!b) return { error: 'block "' + op.title + '" not found on ' + op.date };
     if (op.type === 'removeBlock') d.blocks = d.blocks.filter(x => x !== b);
-    else { b.start = op.start; if (op.dur) b.dur = op.dur; d.blocks.sort((a, c) => a.start - c.start); }
+    else {
+      const cand = { start: op.start, dur: op.dur || b.dur };
+      const cl = clashWith(d.blocks, cand, b.id);
+      if (cl) return { error: '"' + b.title + '" at ' + hm(cand.start) + ' overlaps ' + cl.title };
+      b.start = cand.start; b.dur = cand.dur; d.blocks.sort((a, c) => a.start - c.start);
+    }
     return { day: d };
   }
   if (op.type === 'editTemplateBlock') {
@@ -606,12 +650,16 @@ function applyOp(cfg, store, op, today) {
   if (op.type === 'addRule') {
     const r = Object.assign({ id: uid(), from: today, to: null, attach: [], pillar: false, backup: null, strict: false }, op.rule || {});
     if (!r.title || r.start == null || !r.dur || !Array.isArray(r.days) || !r.days.length) return { error: 'recurring block needs title, start, dur, days' };
+    const rc = ruleClash(cfg, r, null, today);
+    if (rc) return { error: '"' + r.title + '" overlaps recurring ' + rc.title + ' ' + hm(rc.start) + '-' + hm(rc.start + rc.dur) };
     cfg.rules.push(r);
     return { cfg: true };
   }
   if (op.type === 'editRule') {
     const r = cfg.rules.find(x => ruleLive(x, today) && norm(x.title) === norm(op.title));
     if (!r) return { error: 'recurring block "' + op.title + '" not found' };
+    const rc = ruleClash(cfg, Object.assign({}, r, op.patch || {}), r.id, today);
+    if (rc) return { error: '"' + r.title + '" would overlap recurring ' + rc.title };
     editRule(cfg, r.id, op.patch || {}, today);
     return { cfg: true };
   }
@@ -623,6 +671,7 @@ function applyOp(cfg, store, op, today) {
 root.DBX = {
   pad, dkey, parseKey, addDays, dow, weekStart, hm, toMin, durTxt, hrs, clamp, clone, uid, DOW, norm, zoneOf,
   seedConfig, mergeConfig, catOf, SEED_CATS, SHUTDOWN, WEEK_SLOTS,
+  overlaps, clashWith, carve, ruleClash, backupSlot,
   activeRules, templateFor, attachObjs, blockFrom, weekItemsFor, buildDay, getDay, planSnapshot, lockIfDue, resetDay,
   editRule, endRule, ruleLive, lanes, live, intervals, unionMin, gaps,
   tfGoals, candidates, matches, weekDays, itemCount, balanceState, suggest, backupOffers, useBackup, fillDay, placeBlock,

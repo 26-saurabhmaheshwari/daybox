@@ -188,7 +188,8 @@ input[type=color]{width:38px;height:32px;border:1px solid var(--line);border-rad
 .s-ic{width:12px;height:12px;flex:none}
 
 /* ---------- today: agenda + split ---------- */
-.tsplit{display:grid;grid-template-columns:minmax(300px,400px) minmax(0,1fr);gap:18px;align-items:start}
+.tsplit{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,390px);gap:18px;align-items:start}
+.tsplit .tright{position:sticky;top:84px;max-height:calc(100vh - 96px);overflow:auto}
 .gwrap.daygrid{max-height:calc(100vh - 150px)}
 .sumline{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px;color:var(--muted)}
 .sumline .chip b{color:var(--ink);font-family:var(--f-mono);font-weight:500}
@@ -211,6 +212,13 @@ button.ag-h{cursor:pointer}
 .fit-row.done .fit-chk{background:var(--c)}
 .fit-add{display:grid;grid-template-columns:minmax(0,1fr) 82px 104px auto;gap:6px;padding:10px 12px;border-bottom:1px solid var(--line2)}
 .fit-add input,.fit-add select{padding:6px 8px}
+.fit-row.drag{cursor:grab;touch-action:pan-y}
+.fit-row.drag:hover{background:var(--surface2)}
+.fit-row.lifting{background:var(--accent-soft)}
+.fit-hint{padding:8px 12px;font-size:.74rem;color:var(--faint)}
+.drag-ghost{position:fixed;z-index:70;pointer-events:none;padding:6px 10px;border-radius:8px;background:var(--ink);color:var(--bg);font-size:.8rem;font-weight:700;box-shadow:var(--shadow);white-space:nowrap}
+.drag-ghost.over{background:var(--accent);color:var(--accent-ink)}
+.blk.clash{box-shadow:0 0 0 2px var(--alert)!important;opacity:.85}
 .fit-full{padding:10px 12px;font-size:.82rem;color:var(--muted);border-bottom:1px solid var(--line2)}
 .fit-sub{padding:8px 12px 4px;font-size:.7rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
 .gap{pointer-events:none}
@@ -418,7 +426,7 @@ button.ag-h{cursor:pointer}
 <div id="ov" hidden><div id="sheet" role="dialog" aria-modal="true"></div></div>
 <div id="toast" hidden></div>
 <div id="printArea"></div>
-<script src="core.js?v=15"></script>
-<script src="app.js?v=15"></script>
+<script src="core.js?v=16"></script>
+<script src="app.js?v=16"></script>
 </body>
 </html>
