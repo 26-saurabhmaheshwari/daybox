@@ -33,9 +33,8 @@ let SYNC = { state: 'local', msg: '' };
 let VIEW = localStorage.getItem(LS_VIEW) || 'today';
 let CUR = today();
 let WEEK = weekStart(today());
-let PLAN_WS = null;
 let TAB = { bank: 'regular', routine: 'templates', insights: '7' };
-if (VIEW === 'plan') { VIEW = 'bank'; TAB.bank = 'week'; } // Week plan moved into Bank
+if (VIEW === 'plan') VIEW = 'week'; // Week plan is now the Picks card on the Week page
 let SCROLL_NOW = true;
 let DRAGGING = false;
 let TIPS_OPEN = false, AG_DAY = null;
@@ -151,7 +150,7 @@ const VIEWS = [
   { id: 'bank', name: 'Bank', ic: 'bank' }, { id: 'routine', name: 'Routine', ic: 'routine' }, { id: 'insights', name: 'Insights', ic: 'insights' },
   { id: 'saarthi', name: 'Saarthi', ic: 'saarthi' }, { id: 'settings', name: 'Settings', ic: 'settings' },
 ];
-function setView(v) { if (v === 'plan') { v = 'bank'; TAB.bank = 'week'; } VIEW = VIEWS.some(x => x.id === v) ? v : 'today'; localStorage.setItem(LS_VIEW, VIEW); if (VIEW === 'today') SCROLL_NOW = true; closeSheet(); render(); scrollTo(0, 0); }
+function setView(v) { if (v === 'plan') v = 'week'; VIEW = VIEWS.some(x => x.id === v) ? v : 'today'; localStorage.setItem(LS_VIEW, VIEW); if (VIEW === 'today') SCROLL_NOW = true; closeSheet(); render(); scrollTo(0, 0); }
 
 /* ---------- toast + sheet ---------- */
 let toastT = null;
@@ -207,7 +206,7 @@ function renderSync() {
 function render() {
   applyTheme(); renderNav();
   const gw = $('.gwrap'); const sl = gw ? gw.scrollLeft : 0, st = gw ? gw.scrollTop : 0, gid = gw ? gw.id : null;
-  const fn = { today: viewToday, week: viewWeek, plan: viewPlan, bank: viewBank, routine: viewRoutine, insights: viewInsights, saarthi: viewSaarthi, settings: viewSettings }[VIEW] || viewToday;
+  const fn = { today: viewToday, week: viewWeek, bank: viewBank, routine: viewRoutine, insights: viewInsights, saarthi: viewSaarthi, settings: viewSettings }[VIEW] || viewToday;
   const r = fn();
   $('#top').innerHTML = '<h1>' + r.title + (r.sub ? '<span class="sub">' + r.sub + '</span>' : '') + '</h1>' + (r.mid ? '<div class="tmid">' + r.mid + '</div>' : '') + '<div class="tact row">' + (r.actions || '') + '</div>';
   $('#view').innerHTML = r.body;
@@ -810,60 +809,72 @@ function viewWeek() {
     const tag = k === t ? 'today' : d.untracked ? 'not tracked' : st.past ? st.marked + '/' + st.past + ' marked' : '';
     return '<div class="wk-day' + (k === t ? ' today' : '') + '" data-date="' + k + '"><button type="button" class="wk-dh" data-act="wkopen" data-d="' + k + '"><b>' + DOW[dd.getDay()] + ' ' + dd.getDate() + '</b><span>' + tag + '</span></button>' + clockHtml(d, false) + '</div>';
   }).join('');
-  const body = '<div class="cols2" style="margin-bottom:14px">' + (weekCounters(days) || '<div></div>') + balanceBars(bal.rows, 'Balance this week') + '</div>'
+  const body = (WEEK >= weekStart(t) ? picksCard(WEEK) : '') + '<div class="cols2" style="margin:14px 0">' + (weekCounters(days) || '<div></div>') + balanceBars(bal.rows, 'Balance this week') + '</div>'
     + '<div class="ph" style="margin:0 2px 10px"><h3>Week at a glance</h3>' + clockLegend() + '</div><div class="wk-grid">' + cards + '</div>'
     + '<p class="hint" style="margin-top:10px">Each row is one hour: AM :00 :30 on the left, PM :00 :30 on the right. Tap a day to open it, tap a block to edit it.</p>';
   const end = addDays(WEEK, 6);
   return {
     title: 'Week', sub: fmtShort(WEEK) + ' – ' + fmtShort(end),
-    actions: '<button class="iconbtn" data-act="wprev" aria-label="Previous week">' + ic('left') + '</button><button class="iconbtn" data-act="wnext" aria-label="Next week">' + ic('right') + '</button>' + (WEEK === weekStart(t) ? '' : '<button class="btn" data-act="wtoday">This week</button>') + '<button class="btn" data-act="nav" data-v="plan">' + ic('plan') + 'Week plan</button>',
-    body, after() { bindDrag(); },
+    actions: '<button class="iconbtn" data-act="wprev" aria-label="Previous week">' + ic('left') + '</button><button class="iconbtn" data-act="wnext" aria-label="Next week">' + ic('right') + '</button>' + (WEEK === weekStart(t) ? '' : '<button class="btn" data-act="wtoday">This week</button>'),
+    body, after() { bindDrag(); $$('#picks [data-f="pick"]').forEach(s => { s.onchange = () => { const tx = s.parentNode.querySelector('[data-f="text"]'); tx.hidden = s.value !== 'other'; if (!tx.hidden) tx.focus(); }; }); },
   };
 }
-const PLAN_DEF = { career: [0, 600], relationship: [2, 1230], self: [3, 420], big: [5, 900], little: [4, 1020], younight: [1, 1260] };
+const PLAN_DEF = { career: [0, 600], relationship: [2, 1230], self: [3, 420], big: [5, 900], little: [4, 1020] };
 const PLAN_HINT = {
-  career: 'One thing that moves work forward.', relationship: 'One thing for one person (partner, kid, friend).', self: 'One thing just for you: health, hobby, rest.',
-  big: '3-4 hours, weekend. Could you describe it a month later?', little: '1 hour, Friday 17:00 by default.', younight: 'One weeknight that is yours. Tuesday 21:00, backup Thursday.',
+  career: 'One thing that moves work forward.', relationship: 'One thing for one person (partner, kid, friend).', self: 'One thing just for you.',
+  big: '3-4 hours, weekend. Could you describe it a month later?', little: '1 hour, Friday 17:00 by default.',
 };
-function viewPlan() {
-  const t = today(), thisWs = weekStart(t), ws = PLAN_WS || addDays(thisWs, 7);
-  const wp = CFG.weekPlans[ws] || {};
-  const dates = [0, 1, 2, 3, 4, 5, 6].map(i => addDays(ws, i));
-  const dreams = CFG.items.filter(i => i.kind === 'dream' && !i.done && !i.deleted);
-  const rows = Object.keys(X.WEEK_SLOTS).map(k => {
-    const m = X.WEEK_SLOTS[k], v = wp[k] || {}, def = PLAN_DEF[k];
-    const dsel = v.date || dates[def[0]], st = v.start != null ? v.start : def[1], du = v.dur || m.dur;
-    const list = k === 'big' || k === 'little' ? 'pDreams' : '';
-    return '<div class="card" data-k="' + k + '" style="--c:' + catOf(CFG, m.cat).color + '"><div class="row" style="margin-bottom:8px"><span class="chip"><i></i>' + m.label + '</span><span class="muted small">' + PLAN_HINT[k] + '</span></div>'
-      + '<div class="grid2"><input type="text" data-f="text" value="' + esc(v.text || '') + '" placeholder="' + m.label + '..."' + (list ? ' list="' + list + '"' : '') + '>'
-      + '<div class="row" style="flex-wrap:nowrap"><select data-f="date">' + dates.map(dd => '<option value="' + dd + '"' + (dd === dsel ? ' selected' : '') + '>' + fmtShort(dd) + '</option>').join('') + '</select>'
-      + '<input type="time" step="300" data-f="start" value="' + hm(st) + '"><select data-f="dur">' + DURS.map(x => '<option value="' + x + '"' + (x === du ? ' selected' : '') + '>' + durTxt(x) + '</option>').join('') + '</select></div></div></div>';
-  }).join('');
-  const body = '<p class="hint">Plan on Thursday 16:35, before you are inside the week. One line each. Every line gets a day and a time, or it is only a wish. Pick adventures from your dream list, never from a blank page.</p>'
-    + '<datalist id="pDreams">' + dreams.map(i => '<option value="' + esc(i.title) + '">').join('') + '</datalist>' + rows
-    + '<div class="row" style="margin-top:14px"><button class="btn pri" data-act="plansave">Add to the week</button><span class="muted small">Blocks show up in the week. Days you already changed get them added too.</span></div>';
+/* what each line picks from: the lists you already keep */
+function pickSources(k) {
+  const live = i => !i.deleted, by = f => CFG.items.filter(i => live(i) && f(i)).map(i => ['item:' + i.id, i.title, i.cat]);
+  const tf = X.tfGoals(CFG, TF).map(g => ['tf:' + g.id, g.name + (g.mini && g.mini !== g.name ? ' · ' + g.mini : ''), g.cat]);
   return {
-    title: 'Week plan', sub: 'week of ' + fmtShort(ws),
-    actions: '<div class="seg"><button class="' + (ws === thisWs ? 'on' : '') + '" data-act="planws" data-ws="' + thisWs + '">This week</button><button class="' + (ws === addDays(thisWs, 7) ? 'on' : '') + '" data-act="planws" data-ws="' + addDays(thisWs, 7) + '">Next week</button></div>',
-    body,
-  };
+    career: [['Tenfold nuggets', tf], ['Regular', by(i => i.kind === 'regular')]],
+    relationship: [['Family', by(i => i.cat === 'family')], ['Dreams', by(i => i.kind === 'dream' && i.cat !== 'family')]],
+    self: [['Hobbies', by(i => i.kind === 'fun' && i.cat === 'hobby')], ['Self', by(i => i.cat === 'self')]],
+    big: [['Dreams', by(i => i.kind === 'dream')], ['Leisure', by(i => i.kind === 'fun' && i.cat === 'leisure')]],
+    little: [['Dreams', by(i => i.kind === 'dream')], ['Leisure', by(i => i.kind === 'fun' && i.cat === 'leisure')]],
+  }[k] || [];
+}
+function picksCard(ws) {
+  const t = today(), wp = CFG.weekPlans[ws] || {};
+  const dates = [0, 1, 2, 3, 4, 5, 6].map(i => addDays(ws, i));
+  const rows = Object.keys(X.WEEK_SLOTS).filter(k => !X.WEEK_SLOTS[k].old || wp[k]).map(k => {
+    const m = X.WEEK_SLOTS[k], v = wp[k] || {}, def = PLAN_DEF[k] || [0, 600], src = pickSources(k);
+    const sel = v.itemId ? (String(v.itemId).startsWith('tf:') ? v.itemId : 'item:' + v.itemId) : v.text ? 'other' : '';
+    const known = src.some(([, list]) => list.some(o => o[0] === sel));
+    const pick = known || sel === '' ? sel : 'other';
+    const dsel = v.text ? (v.date || '') : dates[def[0]], st = v.text ? v.start : def[1], du = v.dur || m.dur;
+    return '<div class="pk" data-k="' + k + '" style="--c:' + catOf(CFG, m.cat).color + '"><div class="pk-h"><span class="chip"><i></i>' + m.label + '</span><span class="muted small">' + (PLAN_HINT[k] || 'From an older plan.') + '</span></div>'
+      + '<div class="pk-row"><select data-f="pick"><option value="">Not this week</option>' + src.filter(([, l]) => l.length).map(([g, l]) => '<optgroup label="' + esc(g) + '">' + l.map(o => '<option value="' + esc(o[0]) + '"' + (o[0] === pick ? ' selected' : '') + '>' + esc(o[1]) + '</option>').join('') + '</optgroup>').join('') + '<option value="other"' + (pick === 'other' ? ' selected' : '') + '>Something else...</option></select>'
+      + '<input type="text" data-f="text" placeholder="What?" value="' + esc(pick === 'other' ? v.text || '' : '') + '"' + (pick === 'other' ? '' : ' hidden') + '>'
+      + '<select data-f="date"><option value="">Any day</option>' + dates.map(dd => '<option value="' + dd + '"' + (dd === dsel ? ' selected' : '') + (dd < t ? ' disabled' : '') + '>' + fmtShort(dd) + '</option>').join('') + '</select>'
+      + '<input type="time" step="300" data-f="start" value="' + (st != null ? hm(st) : '') + '" title="Empty: Saarthi finds the time">'
+      + '<select data-f="dur">' + (DURS.includes(du) ? DURS : DURS.concat(du).sort((a, b) => a - b)).map(x => '<option value="' + x + '"' + (x === du ? ' selected' : '') + '>' + durTxt(x) + '</option>').join('') + '</select></div></div>';
+  }).join('');
+  return '<div class="card picks" id="picks" data-ws="' + ws + '"><div class="row" style="margin-bottom:6px"><h3 style="margin:0;flex:1">Picks for this week</h3><button class="btn pri sm" data-act="plansave">Save picks</button></div>'
+    + '<p class="hint" style="margin:0 0 10px">Pick from your lists, so the hours count there. No day or time: Saarthi\'s week plan finds the slot first.</p>' + rows + '</div>';
 }
 function savePlan() {
-  const ws = PLAN_WS || addDays(weekStart(today()), 7), t = today();
-  const wp = {};
-  $$('#view .card[data-k]').forEach(c => {
-    const g = f => c.querySelector('[data-f="' + f + '"]').value;
-    const text = g('text').trim(); if (!text) return;
-    const item = CFG.items.find(i => norm(i.title) === norm(text));
-    wp[c.dataset.k] = { text, date: g('date'), start: toMin(g('start')), dur: +g('dur'), itemId: item ? item.id : null };
-  });
+  const box = $('#picks'); if (!box) return;
+  const ws = box.dataset.ws, t = today(), wp = {}, L = X.WEEK_SLOTS;
+  const find = v => { for (const k of Object.keys(L)) for (const [, l] of pickSources(k)) { const o = l.find(x => x[0] === v); if (o) return o; } return null; };
+  for (const c of $$('.pk[data-k]', box)) {
+    const g = f => c.querySelector('[data-f="' + f + '"]').value, pick = g('pick'), k = c.dataset.k;
+    if (!pick) continue;
+    let text, itemId = null, cat = null;
+    if (pick === 'other') { text = g('text').trim(); if (!text) continue; }
+    else { const o = find(pick); if (!o) continue; text = o[1]; cat = o[2]; itemId = pick.startsWith('tf:') ? pick : pick.slice(5); }
+    const date = g('date') || null, sv = g('start');
+    wp[k] = { text, itemId, cat, date, start: date && sv ? toMin(sv) : null, dur: +g('dur') };
+  }
   const base = Object.assign({}, CFG, { weekPlans: {} });
-  const L = X.WEEK_SLOTS;
   for (const k of Object.keys(wp)) {
-    const v = wp[k], cand = { start: v.start, dur: v.dur };
-    const fixed = X.buildDay(base, v.date).blocks.filter(b => b.src === 'rule' && !((k === 'little' && /little adventure/i.test(b.title)) || (k === 'younight' && /you-?night/i.test(b.title))));
-    const cl = X.clashWith(fixed, cand) || Object.keys(wp).filter(j => j !== k && wp[j].date === v.date).map(j => ({ title: L[j].label, start: wp[j].start, dur: wp[j].dur })).find(o => X.overlaps(o, cand));
-    if (cl) return toast(L[k].label + ' on ' + fmtShort(v.date) + ' overlaps ' + clashTxt(cl) + '. Change its time.', null, null, 8000);
+    const v = wp[k]; if (!v.date || v.start == null) continue;
+    const cand = { start: v.start, dur: v.dur };
+    const fixed = X.buildDay(base, v.date).blocks.filter(b => b.src === 'rule' && !(k === 'little' && /little adventure/i.test(b.title)));
+    const cl = X.clashWith(fixed, cand) || Object.keys(wp).filter(j => j !== k && wp[j].date === v.date && wp[j].start != null).map(j => ({ title: L[j].label, start: wp[j].start, dur: wp[j].dur })).find(o => X.overlaps(o, cand));
+    if (cl) return toast(L[k].label + ' on ' + fmtShort(v.date) + ' overlaps ' + clashTxt(cl) + '. Change its time, or leave the time empty.', null, null, 8000);
   }
   CFG.weekPlans[ws] = wp; saveCfg();
   for (let i = 0; i < 7; i++) {
@@ -872,11 +883,11 @@ function savePlan() {
     d.blocks = d.blocks.filter(b => b.src !== 'week');
     const items = X.weekItemsFor(CFG, date);
     if (items.some(w => w.wk === 'little')) d.blocks = d.blocks.filter(b => !(b.src === 'rule' && b.status === 'planned' && /little adventure/i.test(b.title)));
-    if (items.some(w => w.wk === 'younight')) d.blocks = d.blocks.filter(b => !(b.src === 'rule' && b.status === 'planned' && /you-?night/i.test(b.title)));
-    items.forEach(w => d.blocks.push(X.blockFrom(w, { src: 'week', wk: w.wk })));
+    items.forEach(w => d.blocks.push(X.blockFrom(w, Object.assign({ src: 'week', wk: w.wk }, w.itemId ? { itemId: w.itemId } : {}))));
     sortBlocks(d); saveDay(d);
   }
-  toast(Object.keys(wp).length + ' lines added to the week of ' + fmtShort(ws));
+  const n = Object.keys(wp).length, open = Object.values(wp).filter(v => v.start == null).length;
+  toast(n + ' picks saved' + (open ? ', ' + open + ' for Saarthi to place' : ''));
   render();
 }
 
@@ -886,10 +897,10 @@ function itemMeta(it) {
   return esc(c.name) + ' · ' + durTxt(it.min || 30) + (it.kind === 'regular' ? ' · ' + (it.perWeek || 3) + 'x/week' : '') + ' · ' + (it.energy === 'deep' ? 'deep focus' : 'light') + (it.zone && it.zone !== 'any' ? ' · ' + it.zone : '') + (it.needs ? ' · needs ' + esc(it.needs) : '');
 }
 function viewBank() {
-  const tab = ['goals', 'nongoals', 'week', 'balance', 'boredom'].includes(TAB.bank) ? TAB.bank : 'goals', t = today();
+  const tab = ['goals', 'nongoals', 'balance', 'boredom'].includes(TAB.bank) ? TAB.bank : 'goals', t = today();
   const days = X.weekDays(STORE, CFG, t, t);
   syncTfCats();
-  const tabs = [['goals', 'Goals'], ['nongoals', 'Non goals'], ['week', 'Week plan'], ['balance', 'Balance'], ['boredom', 'Boredom list']];
+  const tabs = [['goals', 'Goals'], ['nongoals', 'Non goals'], ['balance', 'Balance'], ['boredom', 'Boredom list']];
   let body = '<div class="tabs">' + tabs.map(([k, l]) => '<button class="' + (tab === k ? 'on' : '') + '" data-act="tab" data-g="bank" data-k="' + k + '">' + l + '</button>').join('') + '</div>';
   const itemRow = (it, right) => { const c = catOf(CFG, it.cat); return '<div class="li" style="--c:' + c.color + '"><span class="sw"></span><div data-act="item" data-id="' + it.id + '" style="cursor:pointer"><div class="t">' + esc(it.title) + '</div><div class="m">' + itemMeta(it) + '</div></div>' + right + '</div>'; };
   const addBtn = (kind, cat) => '<div style="margin-top:10px"><button class="btn pri sm" data-act="item" data-kind="' + kind + '"' + (cat ? ' data-cat="' + cat + '"' : '') + '>' + ic('plus') + 'Add</button></div>';
@@ -918,10 +929,6 @@ function viewBank() {
         + (list.length ? list.map(it => '<div class="li fun" style="--c:' + catOf(CFG, cat).color + '"><span class="sw"></span><div><div class="t">' + esc(it.title) + '</div><div class="m">' + doneTxt(it) + '</div></div><button type="button" class="btn ghost sm" data-fundel="' + it.id + '" aria-label="Remove ' + esc(it.title) + '">×</button></div>').join('') : '<div class="empty">Nothing here yet.</div>')
         + '</div><div class="row fun-add" style="margin-top:10px"><input type="text" data-funnew="' + cat + '" placeholder="' + ph + '" maxlength="40"><button type="button" class="btn pri sm" data-funadd="' + cat + '">' + ic('plus') + 'Add</button></div></div>';
     });
-  } else if (tab === 'week') {
-    // one weekly sitting: the 6 big lines for the week (Saarthi's nightly plan fills the gaps around them)
-    const p = viewPlan();
-    body += '<div class="row" style="margin-bottom:10px"><b style="flex:1">' + esc(p.sub) + '</b>' + p.actions + '</div>' + p.body;
   } else if (tab === 'balance') {
     const free = X.liveCats(CFG).filter(c => c.type !== 'office' && c.type !== 'sleep' && !X.isWaste(CFG, c.id)), b = CFG.settings.balance;
     const sum = free.reduce((a, c) => a + (+b[c.id] || 0), 0);
@@ -1439,7 +1446,6 @@ const ACTS = {
   item: a => openItem(a.dataset.id, a.dataset.kind),
   planit: a => planIt(a.dataset.id),
   boredsave: () => { CFG.boredom = $('#boredTxt').value.split('\n').map(x => x.trim()).filter(Boolean); saveCfg(); toast('Saved'); },
-  planws: a => { PLAN_WS = a.dataset.ws; render(); },
   plansave: savePlan,
   rule: a => openRule(a.dataset.id),
   ruledel: a => { const r = CFG.rules.find(x => x.id === a.dataset.id); if (r) confirmDel(r.title, 'All its versions go, and its planned blocks from today. Days you already saved keep it.', () => delRule(r.id)); },

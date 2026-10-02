@@ -103,7 +103,8 @@ async function buildPull(nDays) {
     // non goals: no targets, nothing to tick off. You pick the length and keep them balanced (least done lately first)
     nonGoals: cfg.items.filter(i => !i.deleted && (i.kind === 'dream' || i.kind === 'fun')).map(i => { const ago = X.lastDone(S, i, t); return i.title + ' [' + (i.kind === 'dream' ? 'dream' : i.cat) + (i.kind === 'dream' ? ', ' + i.min + 'm' : '') + (i.needs ? ', needs ' + i.needs : '') + ', ' + X.durTxt(X.hoursDone(S, i)) + ' done' + (ago == null ? '' : ', last ' + ago + 'd ago') + ']'; }),
     boredomList: cfg.boredom,
-    weekPlans: Object.fromEntries([X.weekStart(t), X.addDays(X.weekStart(t), 7)].map(ws => [ws, (cfg.weekPlans || {})[ws] || null])),
+    // this week's and next week's picks; no time = Saarthi has to place it
+    weekPicks: [X.weekStart(t), X.addDays(X.weekStart(t), 7)].flatMap(ws => Object.entries((cfg.weekPlans || {})[ws] || {}).map(([k, v]) => (X.WEEK_SLOTS[k] || { label: k }).label + ': ' + v.text + ' [week of ' + ws + ', ' + (v.date || 'any day') + ', ' + (v.start != null ? X.hm(v.start) : 'NO TIME, place it') + ', ' + v.dur + 'm' + (v.itemId ? ', itemId ' + v.itemId : '') + (v.cat ? ', cat ' + v.cat : '') + ']')),
     thisWeekBalance: X.balanceState(cfg, week).rows.map(r => r.cat + ' ' + pct(r.share) + ' (target ' + pct(r.target) + ')'),
     report7: brief(X.rangeReport(cfg, S, X.addDays(t, -6), t), cfg),
     report28: brief(X.rangeReport(cfg, S, X.addDays(t, -27), t), cfg),
@@ -222,6 +223,7 @@ function weekPrompt(out, r) {
     saarthiRules(),
     'Task: look at how this week is going (DATA.days blocks and statuses, regular doneThisWeek vs perWeek, tenfoldGoals minutes left and chunk, thisWeekBalance vs balanceTarget, nonGoals least done lately, weekPlans, skippedByHour, learnings) and fill the free time of each day from ' + r.from + ' to ' + r.to + '.',
     'Rules for this week plan (they replace the max 5 ops rule): only addBlock, up to 3 per day, 15 in total. Each block sits fully inside that day\'s freeGaps and clashes with nothing (also not with your other blocks that day). Leave at least ' + out.settings.buffer + ' of each day free. Deep work (goals, nuggets) in the hours the user keeps (see skippedByHour), light things in the evening. Behind goals and nuggets first, then the balance, then non goals. A nugget uses its chunk minutes; non goals 20-60m. Never touch pillars or recurring blocks. Set mit:true on one block per day only if that day has no MIT yet.',
+    'weekPicks marked NO TIME come first: place each one in this range (on its day if it has one), with its minutes, title = its text, block.itemId = its itemId, block.cat = its cat. Skip a pick that is already in the blocks of that week.',
     'label = "Day: activity HH:MM" (e.g. "Tue: Spanish 07:30"), max 5 words. why = one short line with a number from the data. summary = one line on how the week is going and what this plan fixes.',
     'Reply with ONLY the proposal JSON object ({"title","summary","tips","ops"}). No prose, no code fence. Do not use tools.',
     'DATA:\n' + JSON.stringify(out)].join('\n\n');

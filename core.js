@@ -216,20 +216,22 @@ function blockFrom(src, extra) {
     checks: !!src.checks, mit: !!src.mit, attach: attachObjs(src.attach), status: 'planned',
   }, extra || {});
 }
+/* this week's picks: each line picks an item you already have (nugget, dream, hobby...), so its hours count there.
+   No time = Saarthi's week plan finds the slot. You-night is a routine block now (old plans keep it). */
 const WEEK_SLOTS = {
   career:       { label: 'Career',           cat: 'office',  dur: 60 },
   relationship: { label: 'Relationship',     cat: 'family',  dur: 60 },
   self:         { label: 'Self',             cat: 'self',    dur: 60 },
   big:          { label: 'Big adventure',    cat: 'leisure', dur: 180 },
   little:       { label: 'Little adventure', cat: 'leisure', dur: 60 },
-  younight:     { label: 'You-night',        cat: 'self',    dur: 60 },
+  younight:     { label: 'You-night',        cat: 'self',    dur: 60, old: true },
 };
 function weekItemsFor(cfg, date) {
   const wp = (cfg.weekPlans || {})[weekStart(date)];
   if (!wp) return [];
-  return Object.keys(WEEK_SLOTS).filter(k => wp[k] && wp[k].text && wp[k].date === date).map(k => {
+  return Object.keys(WEEK_SLOTS).filter(k => wp[k] && wp[k].text && wp[k].date === date && wp[k].start != null).map(k => {
     const v = wp[k], m = WEEK_SLOTS[k];
-    return { wk: k, title: m.label + ': ' + v.text, cat: v.cat || m.cat, start: v.start, dur: v.dur || m.dur, attach: [] };
+    return { wk: k, title: v.itemId ? v.text : m.label + ': ' + v.text, cat: v.cat || m.cat, start: v.start, dur: v.dur || m.dur, attach: [], itemId: v.itemId || null };
   });
 }
 /* ---------- no overlaps: helpers ---------- */
@@ -283,7 +285,7 @@ function buildDay(cfg, date) {
     if (weekKinds.has('younight') && /you-?night/i.test(r.title)) return;
     fixed.push(blockFrom(r, { src: 'rule', ruleId: r.id }));
   });
-  week.forEach(w => fixed.push(blockFrom(w, { src: 'week', wk: w.wk })));
+  week.forEach(w => fixed.push(blockFrom(w, Object.assign({ src: 'week', wk: w.wk }, w.itemId ? { itemId: w.itemId } : {}))));
   // template blocks make room for recurring + Thursday-plan blocks, so nothing overlaps
   const tpl = t ? t.blocks.filter(b => !ruleTitles.has(norm(b.title))).map(b => blockFrom(b, { src: 'tpl' })) : [];
   blocks.push(...fixed, ...carve(tpl, fixed));
