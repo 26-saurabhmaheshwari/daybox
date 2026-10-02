@@ -222,7 +222,20 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 .ck-c.st-done .ck-i{background:#fff;color:var(--k)}
 .qbtns{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 /* ---------- Today: morning / afternoon / evening ---------- */
-.parts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.parts{display:grid;grid-template-columns:var(--cols,repeat(3,minmax(0,1fr)));gap:14px}
+.pt-h[data-act]{cursor:pointer;user-select:none}
+.pt-sum{display:flex;flex-direction:column;gap:6px;font-size:.72rem;color:var(--muted)}
+.pt-bar{position:relative;height:10px;border-radius:5px;background:color-mix(in srgb,var(--pt) 10%,var(--surface));overflow:hidden}
+.pt-bar i{position:absolute;top:0;bottom:0;left:var(--a);width:var(--b);background:var(--c);border-right:1px solid var(--surface)}
+.pt-bar i.sk{opacity:.35}
+.part.col{padding-bottom:12px}
+@media (min-width:901px){
+  .part.col{padding:0;display:flex;flex-direction:column}
+  .part.col .pt-h{writing-mode:vertical-rl;transform:rotate(180deg);height:auto;margin:0;padding:12px 0;justify-content:flex-end;gap:10px;background:var(--sky)}
+  .part.col .pt-sum{flex:1;align-items:center;padding:10px 0;writing-mode:vertical-rl;transform:rotate(180deg)}
+  .part.col .pt-bar{width:10px;height:auto;flex:1;min-height:80px;transform:rotate(180deg)}
+  .part.col .pt-bar i{left:0;right:0;width:auto;top:var(--a);height:var(--b);bottom:auto;border-right:0;border-bottom:1px solid var(--surface)}
+}
 /* each card has a slim landscape strip (sky + sun/moon + hills); the art stays in the middle so the text left and right stays clear */
 .part{border:1px solid var(--line);border-radius:18px;padding:12px 12px 10px;overflow:hidden;background:linear-gradient(180deg,color-mix(in srgb,var(--pt) 12%,var(--surface)) 0%,var(--surface) 60%)}
 .part.now{border-color:color-mix(in srgb,var(--accent) 45%,var(--line));box-shadow:0 0 0 3px var(--accent-soft)}
@@ -592,7 +605,7 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 <div id="ov" hidden><div id="sheet" role="dialog" aria-modal="true"></div></div>
 <div id="toast" hidden></div>
 <div id="printArea"></div>
-<script src="core.js?v=60"></script>
-<script src="app.js?v=60"></script>
+<script src="core.js?v=61"></script>
+<script src="app.js?v=61"></script>
 </body>
 </html>

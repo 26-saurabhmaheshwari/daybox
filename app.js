@@ -607,12 +607,24 @@ function clockHtml(d, big) {
 // Today: three cards, one hour per row, :00 | :30
 const DAY_PARTS = [['Morning', 6, 12, 'am'], ['Afternoon', 12, 18, 'pm'], ['Evening', 18, 24, 'ev']];
 const h12 = h => (h % 12) || 12;
+// a part of today that is over folds into a strip (tap its header to open or fold any part, any day)
+const PART_OPEN = {}; // date|k -> true/false, your taps win over the default
+const partFolded = (d, k, h1) => { const v = PART_OPEN[d.date + '|' + k]; return v != null ? !v : d.date === today() && nowMin() >= h1 * 60; };
+function partStrip(d, h0, h1) {
+  const a = h0 * 60, z = h1 * 60, bs = d.blocks.filter(b => X.live(b) && b.start < z && b.start + b.dur > a).sort((x, y) => x.start - y.start);
+  const n = st => bs.filter(b => b.status === st).length, dn = n('done') + n('partial'), sk = n('skipped');
+  const bar = bs.map(b => { const s = Math.max(b.start, a), e = Math.min(b.start + b.dur, z); return '<i class="' + (b.status === 'skipped' ? 'sk' : '') + '" style="--c:' + catOf(CFG, b.cat).color + ';--a:' + ((s - a) / (z - a) * 100) + '%;--b:' + ((e - s) / (z - a) * 100) + '%" title="' + esc(hm(b.start) + ' ' + b.title) + '"></i>'; }).join('');
+  return '<div class="pt-sum"><div class="pt-bar">' + bar + '</div><span>' + (bs.length ? bs.length + ' block' + (bs.length > 1 ? 's' : '') + (dn ? ' · ' + dn + ' done' : '') + (sk ? ' · ' + sk + ' skipped' : '') : 'nothing booked') + '</span></div>';
+}
 function partsHtml(d) {
   const { pair } = cellFactory(d, true, true), nm = nowMin(), isT = d.date === today();
-  return '<div class="parts">' + DAY_PARTS.map(([name, h0, h1, k]) => {
+  const fold = DAY_PARTS.map(([, , h1, k]) => partFolded(d, k, h1));
+  return '<div class="parts" style="--cols:' + fold.map(f => f ? '76px' : 'minmax(0,1fr)').join(' ') + '">' + DAY_PARTS.map(([name, h0, h1, k], i) => {
     const now = isT && nm >= h0 * 60 && nm < h1 * 60;
     // 24h everywhere, same as the times on the blocks
-    let g = '<div class="part ' + k + (now ? ' now' : '') + '"><div class="pt-h"><b>' + name + '</b><span>' + pad(h0) + ':00 – ' + pad(h1) + ':00</span></div>'
+    const head = '<div class="pt-h" data-act="parttog" data-k="' + k + '" role="button" tabindex="0" aria-expanded="' + !fold[i] + '" title="' + (fold[i] ? 'Open ' : 'Fold ') + name + '"><b>' + name + '</b><span>' + pad(h0) + ':00 – ' + pad(h1) + ':00</span></div>';
+    if (fold[i]) return '<div class="part col ' + k + '">' + head + partStrip(d, h0, h1) + '</div>';
+    let g = '<div class="part ' + k + (now ? ' now' : '') + '">' + head
       + '<div class="pt-g"><span></span><span class="ck-h">:00</span><span class="ck-h">:30</span>';
     for (let h = h0; h < h1; h++) g += '<span class="ck-r">' + h + '</span>' + pair(h * 60, false);
     return g + '</div></div>';
@@ -1369,6 +1381,7 @@ const ACTS = {
     ASK = { at: Date.now(), date: d.date, slots, state: 'asked' }; render();
     DBXFB.pushAsk(ASK).then(() => toast('Asked Saarthi. Ideas in about a minute.')).catch(e => { ASK = null; render(); toast('Could not ask: ' + e.message); });
   },
+  parttog: a => { const d = AG_DAY, k = a.dataset.k, p = DAY_PARTS.find(x => x[3] === k); if (!d || !p) return; PART_OPEN[d.date + '|' + k] = partFolded(d, k, p[2]); render(); },
   tellsend: () => {
     const el = $('#tellTxt'), text = (el ? el.value : '').trim();
     if (!text) { if (el) el.focus(); return; }
