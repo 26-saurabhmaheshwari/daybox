@@ -532,6 +532,12 @@ function openClose(date) {
 
 /* ---------- views ---------- */
 function statusCounts(d) { const nm = nowMin(), t = today(); const past = d.blocks.filter(b => b.cat !== 'sleep' && (d.date < t || b.start + b.dur <= nm)); return { past: past.length, marked: past.filter(b => b.status !== 'planned').length }; }
+function dayBar(d, nm) {
+  const s = CFG.settings, span = Math.max(1, s.bedtime - s.dayStart);
+  const pct = clamp(Math.round((nm - s.dayStart) / span * 100), 0, 100);
+  const done = d.blocks.filter(b => b.status === 'done' && b.cat !== 'sleep').reduce((a, b) => a + b.dur, 0);
+  return '<div class="daybar2"><div class="db-t"><span>Day ' + pct + '% gone · ' + durTxt(Math.max(0, s.bedtime - nm)) + ' to bedtime</span><span>' + durTxt(done) + ' done</span></div><div class="bar day"><i style="width:' + pct + '%"></i></div></div>';
+}
 function nowBarHtml(d) {
   const nm = nowMin(), s = CFG.settings;
   const cur = currentBlock(d, nm);
@@ -540,11 +546,11 @@ function nowBarHtml(d) {
   if (cur) {
     const left = cur.start + cur.dur - nm, pct = Math.round((nm - cur.start) / cur.dur * 100);
     const chk = cur.checks ? ' · next check ' + hm(Math.ceil((nm + 1) / 30) * 30) + ' (3 min, timer first)' : '';
-    return '<div class="nowbar" id="nowbar"><div><div class="now-t">Now: ' + esc(cur.title) + '</div><div class="now-s">' + durTxt(left) + ' left, ends ' + hm(cur.start + cur.dur) + chk + (next ? ' · then ' + esc(next.title) + ' ' + hm(next.start) : '') + '</div><div class="bar" style="--c:' + catOf(CFG, cur.cat).color + '"><i style="width:' + pct + '%"></i></div></div>'
-      + '<div class="acts"><button class="btn" data-act="bored">Bored?</button></div></div>';
+    return '<div class="nowbar" id="nowbar"><div><div class="now-t">Now: ' + esc(cur.title) + '</div><div class="now-s">' + durTxt(left) + ' left, ends ' + hm(cur.start + cur.dur) + chk + (next ? ' · then ' + esc(next.title) + ' ' + hm(next.start) : '') + '</div><div class="bar" style="--c:' + catOf(CFG, cur.cat).color + '"><i style="width:' + pct + '%"></i></div>'
+      + dayBar(d, nm) + '</div><div class="acts"><button class="btn" data-act="bored">Bored?</button></div></div>';
   }
   const until = next ? next.start : s.bedtime;
-  return '<div class="nowbar" id="nowbar"><div><div class="now-t">Free now</div><div class="now-s">' + durTxt(until - nm) + ' until ' + (next ? esc(next.title) + ' at ' + hm(next.start) : 'bedtime ' + hm(s.bedtime)) + '. Pick it before boredom picks the phone.</div></div>'
+  return '<div class="nowbar" id="nowbar"><div><div class="now-t">Free now</div><div class="now-s">' + durTxt(until - nm) + ' until ' + (next ? esc(next.title) + ' at ' + hm(next.start) : 'bedtime ' + hm(s.bedtime)) + '. Pick it before boredom picks the phone.</div>' + dayBar(d, nm) + '</div>'
     + '<div class="acts"><button class="btn" data-act="bored">Bored?</button></div></div>';
 }
 function dismissed(date) { const o = load(LS_DISMISS) || {}; return o[date] || []; }
@@ -593,6 +599,7 @@ function agendaHtml(d) {
 }
 const blockOf = (d, x) => x.placed ? d.blocks.find(b => b.id === x.placed) : null;
 let SUGS = [];
+const FIT_MAX = 5;  // your tasks + Saarthi suggestions, never more than 5 a day
 function fitFrom(d) { const s = CFG.settings, t = today(); return d.date === t ? Math.max(s.dayStart, Math.ceil(nowMin() / 15) * 15) : s.dayStart; }
 function fitHtml(d) {
   const t = today(), s = CFG.settings;
@@ -603,7 +610,7 @@ function fitHtml(d) {
   const todos = d.todo || [];
   const open = todos.filter(x => !x.done && !blockOf(d, x));
   const needMin = open.reduce((a, x) => a + (x.min || 30), 0);
-  let h = '<div class="ag fit"><div class="ag-h"><span>To fit ' + (d.date === t ? 'today' : fmtShort(d.date)) + '</span><span>' + (open.length ? open.length + ' to place · ' + durTxt(needMin) + ' · ' : '') + durTxt(freeMin) + ' free</span></div>';
+  let h = '<div class="ag fit"><div class="ag-h"><span>To fit ' + (d.date === t ? 'today' : fmtShort(d.date)) + ' · ' + Math.min(FIT_MAX, todos.length) + '/' + FIT_MAX + '</span><span>' + (open.length ? open.length + ' to place · ' + durTxt(needMin) + ' · ' : '') + durTxt(freeMin) + ' free</span></div>';
   if (needMin > freeMin * (1 - s.buffer) && open.length) h += '<div class="al warn" style="margin:8px 12px">' + durTxt(needMin) + ' to fit but only ' + durTxt(freeMin) + ' free. Pick what matters, move the rest to another day.</div>';
   h += todos.map(x => {
     const b = blockOf(d, x), done = x.done || (b && b.status === 'done'), c = catOf(CFG, x.cat);
@@ -612,17 +619,21 @@ function fitHtml(d) {
       + (b || done ? '<span></span>' : '<button type="button" class="btn sm pri" data-act="fitplace" data-id="' + x.id + '">Place</button>')
       + '<button type="button" class="ag-lock" data-act="fitdel" data-id="' + x.id + '" aria-label="Remove">×</button></div>';
   }).join('');
-  h += '<div class="fit-add"><input id="fitTitle" type="text" placeholder="Add a task to fit ' + (d.date === t ? 'today' : 'this day') + '" autocomplete="off" list="bTitles"><datalist id="bTitles">' + titleList() + '</datalist>'
+  if (todos.length >= FIT_MAX) h += '<div class="fit-full">' + FIT_MAX + ' for today. Tick one done or remove one to add another.</div>';
+  else h += '<div class="fit-add"><input id="fitTitle" type="text" placeholder="Add a task to fit ' + (d.date === t ? 'today' : 'this day') + '" autocomplete="off" list="bTitles"><datalist id="bTitles">' + titleList() + '</datalist>'
     + '<select id="fitMin" aria-label="Length">' + [15, 20, 30, 45, 60, 90, 120, 180].map(m => '<option value="' + m + '"' + (m === 30 ? ' selected' : '') + '>' + durTxt(m) + '</option>').join('') + '</select>'
     + '<select id="fitCat" aria-label="Category">' + catOptions('office') + '</select><button type="button" class="btn sm pri" data-act="fitadd">Add</button></div>';
   // suggestions: Saarthi ops for this day + bank picks for the biggest free slot
   const ops = (INBOX && INBOX.ops || []).map((o, i) => ({ o, i })).filter(({ o }) => (o.state === 'pending' || o.state === 'failed') && o.op && (o.op.date === d.date || (!o.op.date && d.date === t)));
   const big = gs.filter(g => g.end - g.start >= 30).sort((a, b) => (b.end - b.start) - (a.end - a.start))[0];
   const hide = d.sugHide || [];
-  SUGS = big ? X.suggest(CFG, STORE, TF, d.date, big, t, 8).filter(x => !hide.includes(x.item.id)).slice(0, 3).map(x => Object.assign(x, { gap: big })) : [];
-  if (ops.length || SUGS.length) {
-    h += '<div class="fit-sub">Suggested</div>';
-    h += ops.map(({ o, i }) => '<div class="fit-row sug"><span class="ag-dot" style="--c:var(--accent)"></span><div class="ag-main"><div class="ag-title"><span>' + esc(o.label) + '</span></div><div class="ag-meta">Saarthi' + (o.why ? ' · ' + esc(o.why) : '') + '</div></div><button type="button" class="btn sm pri" data-act="opacc" data-i="' + i + '">Accept</button><button type="button" class="ag-lock" data-act="oprej" data-i="' + i + '" aria-label="Reject">×</button></div>').join('');
+  const slots = Math.max(0, FIT_MAX - todos.length);
+  const opsShown = ops.slice(0, slots);
+  const titles = new Set(todos.map(x => norm(x.title)));
+  SUGS = big && slots > opsShown.length ? X.suggest(CFG, STORE, TF, d.date, big, t, 8).filter(x => !hide.includes(x.item.id) && !titles.has(norm(x.item.title))).slice(0, slots - opsShown.length).map(x => Object.assign(x, { gap: big })) : [];
+  if (opsShown.length || SUGS.length) {
+    h += '<div class="fit-sub">Saarthi suggests</div>';
+    h += opsShown.map(({ o, i }) => '<div class="fit-row sug"><span class="ag-dot" style="--c:var(--accent)"></span><div class="ag-main"><div class="ag-title"><span>' + esc(o.label) + '</span></div><div class="ag-meta">Saarthi' + (o.why ? ' · ' + esc(o.why) : '') + '</div></div><button type="button" class="btn sm pri" data-act="opacc" data-i="' + i + '">Accept</button><button type="button" class="ag-lock" data-act="oprej" data-i="' + i + '" aria-label="Reject">×</button></div>').join('');
     h += SUGS.map((sg, i) => { const c = catOf(CFG, sg.item.cat); return '<div class="fit-row sug" style="--c:' + c.color + '"><span class="ag-dot"></span><div class="ag-main"><div class="ag-title"><span>' + esc(sg.item.title) + '</span></div><div class="ag-meta">' + durTxt(sg.min) + ' at ' + hm(sg.gap.start) + ' · ' + esc(sg.why) + '</div></div><button type="button" class="btn sm" data-act="sugacc" data-i="' + i + '">Accept</button><button type="button" class="ag-lock" data-act="sughide" data-id="' + esc(sg.item.id) + '" aria-label="Not today">×</button></div>'; }).join('');
   }
   return h + '</div>';
@@ -630,6 +641,7 @@ function fitHtml(d) {
 function fitAdd() {
   const d = AG_DAY; const inp = $('#fitTitle'); if (!d || !inp) return;
   const title = inp.value.trim(); if (!title) return inp.focus();
+  if ((d.todo || []).length >= FIT_MAX) return toast(FIT_MAX + ' is the limit for a day.');
   d.todo = (d.todo || []).concat({ id: uid(), title, min: +$('#fitMin').value, cat: $('#fitCat').value, done: false });
   saveDay(d); render();
   const n = $('#fitTitle'); if (n) n.focus();
@@ -1192,7 +1204,7 @@ const ACTS = {
   fitplace: a => { const d = AG_DAY, x = d && (d.todo || []).find(y => y.id === a.dataset.id); if (!x) return; const before = clone(d); const b = X.placeBlock(CFG, d, x, fitFrom(d)); if (!b) return toast('No free slot of ' + durTxt(x.min || 30) + ' left. Shorten it or move it to another day.'); x.placed = b.id; saveDay(d); render(); toast(x.title + ' placed at ' + hm(b.start), 'Undo', () => { saveDay(before); render(); }); },
   fitdone: a => { const d = AG_DAY, x = d && (d.todo || []).find(y => y.id === a.dataset.id); if (!x) return; const b = blockOf(d, x); x.done = !(x.done || (b && b.status === 'done')); if (b) b.status = x.done ? 'done' : 'planned'; saveDay(d); render(); },
   fitdel: a => { const d = AG_DAY; if (!d) return; const before = clone(d); d.todo = (d.todo || []).filter(y => y.id !== a.dataset.id); saveDay(d); render(); toast('Removed from the list', 'Undo', () => { saveDay(before); render(); }); },
-  sugacc: a => { const d = AG_DAY, sg = SUGS[+a.dataset.i]; if (!d || !sg) return; const before = clone(d); const b = X.placeBlock(CFG, d, { title: sg.item.title, min: sg.min, cat: sg.item.cat, src: 'bank', itemId: sg.item.id }, sg.gap.start); if (!b) return toast('That slot is gone.'); saveDay(d); render(); toast(sg.item.title + ' at ' + hm(b.start), 'Undo', () => { saveDay(before); render(); }); },
+  sugacc: a => { const d = AG_DAY, sg = SUGS[+a.dataset.i]; if (!d || !sg) return; const before = clone(d); if ((d.todo || []).length >= FIT_MAX) return toast(FIT_MAX + ' is the limit for a day.'); const b = X.placeBlock(CFG, d, { title: sg.item.title, min: sg.min, cat: sg.item.cat, src: 'bank', itemId: sg.item.id }, sg.gap.start); if (!b) return toast('That slot is gone.'); d.todo = (d.todo || []).concat({ id: uid(), title: sg.item.title, min: sg.min, cat: sg.item.cat, done: false, by: 'saarthi', placed: b.id }); saveDay(d); render(); toast(sg.item.title + ' at ' + hm(b.start), 'Undo', () => { saveDay(before); render(); }); },
   sughide: a => { const d = AG_DAY; if (!d) return; d.sugHide = (d.sugHide || []).concat(a.dataset.id); saveDay(d); render(); },
   tmode: a => { TMODE = a.dataset.m; localStorage.setItem(LS_TMODE, TMODE); SCROLL_NOW = true; render(); },
   tips: () => { TIPS_OPEN = !TIPS_OPEN; render(); },
