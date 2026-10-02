@@ -173,7 +173,7 @@ function applyTheme() { const t = CFG.settings.theme; if (t === 'light' || t ===
 function pendingOps() { return INBOX && Array.isArray(INBOX.ops) ? INBOX.ops.filter(o => o.state === 'pending').length : 0; }
 function unmarkedToday() {
   const d = DAYS[today()]; if (!d) return 0; const nm = nowMin();
-  return d.blocks.filter(b => b.status === 'planned' && b.start + b.dur <= nm && b.cat !== 'sleep').length;
+  return d.blocks.filter(b => b.status === 'planned' && b.start + b.dur <= nm && !X.isSleep(CFG, b.cat)).length;
 }
 function renderNav() {
   const badge = { today: unmarkedToday(), saarthi: pendingOps() };
@@ -210,7 +210,7 @@ function fitDur(blocks, start, dur) { const nxt = blocks.filter(X.live).filter(b
 
 /* ---------- block editor ---------- */
 const DURS = [10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 75, 90, 105, 120, 150, 180, 240, 300];
-function catOptions(sel) { return CFG.cats.map(c => '<option value="' + c.id + '"' + (c.id === sel ? ' selected' : '') + '>' + esc(c.name) + '</option>').join(''); }
+function catOptions(sel) { return CFG.cats.filter(c => !c.deleted || c.id === sel).map(c => '<option value="' + c.id + '"' + (c.id === sel ? ' selected' : '') + '>' + esc(c.name) + '</option>').join(''); }
 function titleList() {
   const s = new Set();
   CFG.items.forEach(i => s.add(i.title)); CFG.rules.forEach(r => s.add(r.title)); CFG.templates.forEach(t => t.blocks.forEach(b => s.add(b.title)));
@@ -364,7 +364,7 @@ function doFill(date) {
 function slipOn(date) { return !!(TF && (TF.sanyam || []).some(r => r.d === date && (!r.h || X.sanyamHabits(TF).some(h => h.id === r.h)))); }
 function openClose(date) {
   const d = DAYS[date] || day(date);
-  const rows = d.blocks.filter(b => b.cat !== 'sleep' && b.status !== 'moved');
+  const rows = d.blocks.filter(b => !X.isSleep(CFG, b.cat) && b.status !== 'moved');
   const close = d.close || {};
   const slip = slipOn(date);
   const html = '<div class="sh-h"><h2>Close the day</h2><span class="muted small">' + fmtShort(date) + '</span><button class="iconbtn" data-x aria-label="Close">×</button></div>'
@@ -405,7 +405,7 @@ function openClose(date) {
 }
 
 /* ---------- views ---------- */
-function statusCounts(d) { const nm = nowMin(), t = today(); const past = d.blocks.filter(b => b.cat !== 'sleep' && (d.date < t || b.start + b.dur <= nm)); return { past: past.length, marked: past.filter(b => b.status !== 'planned').length }; }
+function statusCounts(d) { const nm = nowMin(), t = today(); const past = d.blocks.filter(b => !X.isSleep(CFG, b.cat) && (d.date < t || b.start + b.dur <= nm)); return { past: past.length, marked: past.filter(b => b.status !== 'planned').length }; }
 function dismissed(date) { const o = load(LS_DISMISS) || {}; return o[date] || []; }
 
 const blockOf = (d, x) => x.placed ? d.blocks.find(b => b.id === x.placed) : null;
@@ -523,7 +523,7 @@ function blkState(d, b, nm, t) {
   if (b.status === 'done' || b.status === 'partial') return 'done';
   if (b.status === 'skipped') return 'skip';
   const end = b.start + b.dur;
-  if (d.date < t || (d.date === t && end <= nm)) return b.cat === 'sleep' || d.virtual ? 'past' : 'mark';
+  if (d.date < t || (d.date === t && end <= nm)) return X.isSleep(CFG, b.cat) || d.virtual ? 'past' : 'mark';
   if (d.date === t && b.start <= nm) return 'now';
   return 'up';
 }
@@ -886,7 +886,7 @@ function viewBank() {
     else if (!gs.length) body += '<div class="empty">No open Live, Quarter or Yearly goals in Tenfold.</div>';
     else body += '<div class="card"><table class="tbl" id="tfTbl"><thead><tr><th>Goal</th><th>Use</th><th>Category</th><th>Minutes</th><th>Per week</th></tr></thead><tbody>' + gs.map(g => '<tr data-id="' + esc(g.id) + '"><td style="text-align:left"><b>' + esc(g.name) + '</b><div class="muted small">' + esc(g.secLabel) + ' · ' + esc(g.tfCat || '') + (g.target ? ' · ' + (g.cur || 0) + '/' + g.target + ' ' + esc(g.unit || '') : '') + '</div></td><td><input type="checkbox" data-f="on"' + (g.on ? ' checked' : '') + '></td><td><select data-f="cat">' + catOptions(g.cat) + '</select></td><td><input type="number" min="10" step="5" data-f="min" value="' + g.min + '" style="width:76px"></td><td><input type="number" min="1" max="14" data-f="perWeek" value="' + g.perWeek + '" style="width:64px"></td></tr>').join('') + '</tbody></table></div>';
   } else if (tab === 'balance') {
-    const free = CFG.cats.filter(c => c.group === 'free'), b = CFG.settings.balance;
+    const free = X.liveCats(CFG).filter(c => c.group === 'free'), b = CFG.settings.balance;
     const sum = free.reduce((a, c) => a + (+b[c.id] || 0), 0);
     body += '<p class="hint">How you want your free time split. Default: goals = fun (hobby + leisure), then family and health. Suggestions push whatever is behind.</p>'
       + '<div class="cols2"><div class="card"><h3>Your mix</h3>' + free.map(c => '<div class="hbar" style="--c:' + c.color + '"><span>' + esc(c.name) + '</span><input type="range" min="0" max="60" step="5" data-bal="' + c.id + '" value="' + (+b[c.id] || 0) + '"><span class="mono small" id="bv_' + c.id + '">' + (+b[c.id] || 0) + '%</span></div>').join('')
@@ -1096,6 +1096,24 @@ async function decideOp(i, accept) {
 }
 
 /* ---------- settings ---------- */
+let CAT_DEL = null; // category waiting for delete confirm
+function typeOptions(sel) { return X.CAT_TYPES.map(t => '<option value="' + t.id + '"' + (t.id === sel ? ' selected' : '') + '>' + t.name + '</option>').join(''); }
+function catCard() {
+  const cats = X.liveCats(CFG);
+  const row = c => {
+    let h = '<div class="li cat" data-cat="' + c.id + '"><input type="color" value="' + c.color + '" data-f="color" aria-label="Colour"><input type="text" value="' + esc(c.name) + '" data-f="name" aria-label="Name"><select data-f="group" aria-label="Type">' + typeOptions(c.group) + '</select>'
+      + (cats.length > 1 ? '<button type="button" class="btn ghost sm" data-catdel="' + c.id + '" aria-label="Delete ' + esc(c.name) + '" title="Delete">×</button>' : '<span></span>') + '</div>';
+    if (CAT_DEL !== c.id) return h;
+    const u = X.catUse(CFG, c.id), used = u.rules + u.items;
+    const what = [u.rules ? u.rules + ' recurring block' + (u.rules > 1 ? 's' : '') : '', u.items ? u.items + ' bank item' + (u.items > 1 ? 's' : '') : ''].filter(Boolean).join(' and ');
+    return h + '<div class="cat-del"><span>Delete <b>' + esc(c.name) + '</b>? Past days keep it.' + (used ? ' Move its ' + what + ' to' : '') + '</span>'
+      + (used ? '<select id="catTo">' + cats.filter(x => x.id !== c.id).map(x => '<option value="' + x.id + '">' + esc(x.name) + '</option>').join('') + '</select>' : '')
+      + '<button type="button" class="btn sm danger" id="catYes">Delete</button><button type="button" class="btn sm" id="catNo">Cancel</button></div>';
+  };
+  return '<div class="card"><h3>Categories</h3><div class="list">' + cats.map(row).join('') + '</div>'
+    + '<div class="li cat add"><span></span><input type="text" id="catNew" placeholder="New category" maxlength="24"><select id="catNewG" aria-label="Type">' + typeOptions('free') + '</select><button type="button" class="btn sm pri" id="catAdd">Add</button></div>'
+    + '<dl class="types">' + X.CAT_TYPES.map(t => '<dt>' + t.name + '</dt><dd>' + t.hint + '</dd>').join('') + '</dl></div>';
+}
 function viewSettings() {
   const s = CFG.settings;
   const body = '<div class="cols2"><div>'
@@ -1109,7 +1127,7 @@ function viewSettings() {
     + '<div class="row" style="margin-top:12px"><label class="check"><input type="checkbox" data-s="sound"' + (s.sound ? ' checked' : '') + '> Bell sound when a block starts and ends</label><button class="btn sm" data-act="notify">Allow pop-up alerts</button></div>'
     + '<p class="hint">Alerts only ring while DayBox is open in a tab (or on your phone home screen).</p></div>'
     + '<div class="card"><h3>Backup</h3><div class="row"><button class="btn" data-act="export">Export backup (JSON)</button><label class="btn">Import backup or routine<input type="file" accept=".json,application/json" id="impFile" hidden></label><button class="btn" data-act="csv">Export CSV</button></div><p class="hint">Import replaces templates, routine, bank and settings, and adds any days in the file. Use it once for <b>my-routine.json</b>.</p></div>'
-    + '</div><div><div class="card"><h3>Categories</h3><div class="list">' + CFG.cats.map(c => '<div class="li" data-cat="' + c.id + '"><input type="color" value="' + c.color + '" data-f="color"><input type="text" value="' + esc(c.name) + '" data-f="name"><select data-f="group">' + [['fixed', 'Fixed'], ['free', 'Free time'], ['self', 'Self'], ['sleep', 'Sleep'], ['waste', 'Waste']].map(([v, l]) => '<option value="' + v + '"' + (c.group === v ? ' selected' : '') + '>' + l + '</option>').join('') + '</select></div>').join('') + '</div><p class="hint">"Free time" categories count for your balance mix and suggestions.</p></div>'
+    + '</div><div>' + catCard()
     + '<div class="card"><h3>About</h3><p class="small" style="margin:0">DayBox v1 · Data: Firebase <span class="mono">planner/</span> (yours only). Tenfold is read, never written.</p></div></div></div>';
   return {
     title: 'Settings', body,
@@ -1124,7 +1142,12 @@ function viewSettings() {
           saveCfg(); render();
         };
       });
-      $$('[data-cat]').forEach(li => { li.onchange = e => { const c = CFG.cats.find(x => x.id === li.dataset.cat); c[e.target.dataset.f] = e.target.value; saveCfg(); }; });
+      $$('[data-cat]').forEach(li => { li.onchange = e => { const f = e.target.dataset.f; if (!f) return; const c = CFG.cats.find(x => x.id === li.dataset.cat); c[f] = f === 'name' ? (e.target.value.trim() || c.name) : e.target.value; saveCfg(); if (f === 'group') render(); }; });
+      $$('[data-catdel]').forEach(b => { b.onclick = () => { CAT_DEL = b.dataset.catdel; render(); }; });
+      if ($('#catNo')) $('#catNo').onclick = () => { CAT_DEL = null; render(); };
+      if ($('#catYes')) $('#catYes').onclick = () => { const to = $('#catTo') ? $('#catTo').value : null; if (X.deleteCat(CFG, CAT_DEL, to)) { CAT_DEL = null; saveCfg(); render(); } };
+      $('#catAdd').onclick = () => { const n = $('#catNew').value.trim(); if (!n) { $('#catNew').focus(); return; } X.addCat(CFG, n, $('#catNewG').value); saveCfg(); render(); };
+      $('#catNew').onkeydown = e => { if (e.key === 'Enter') $('#catAdd').click(); };
       $('#impFile').onchange = e => { const f = e.target.files[0]; if (f) importFile(f); e.target.value = ''; };
     },
   };
@@ -1207,7 +1230,7 @@ function tick() {
   let crossed = false;
   if (d) d.blocks.filter(X.live).forEach(b => {
     const end = b.start + b.dur;
-    if (lastTick < end && end <= nm) { crossed = true; if (b.status === 'planned' && b.cat !== 'sleep') ring('end', b, d); }
+    if (lastTick < end && end <= nm) { crossed = true; if (b.status === 'planned' && !X.isSleep(CFG, b.cat)) ring('end', b, d); }
     else if (lastTick < b.start && b.start <= nm) { crossed = true; ring('start', b, d); }
   });
   if (crossed && VIEW === 'today' && CUR === t && !DRAGGING && $('#ov').hidden) { lastTick = nm; render(); return; }

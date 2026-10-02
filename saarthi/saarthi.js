@@ -91,7 +91,7 @@ async function buildPull(nDays) {
   const out = {
     now: { date: t, day: X.DOW[X.dow(t)], time: X.hm(new Date().getHours() * 60 + new Date().getMinutes()) },
     settings: { gridStart: X.hm(cfg.settings.dayStart), bedtime: X.hm(cfg.settings.bedtime), buffer: pct(cfg.settings.buffer), balanceTarget: cfg.settings.balance },
-    categories: cfg.cats.map(c => c.id + '=' + c.name + ' (' + c.group + ')'),
+    categories: X.liveCats(cfg).map(c => c.id + '=' + c.name + ' (' + c.group + ')'),
     templates: cfg.templates.filter(x => !x.deleted).map(x => ({ id: x.id, name: x.name, days: x.days.map(d => X.DOW[d]), version: x.version, blocks: x.blocks.slice().sort((a, b) => a.start - b.start).map(b => blk(cfg, b)) })),
     recurring: cfg.rules.filter(r => X.ruleLive(r, t)).map(r => blk(cfg, r) + ' on ' + r.days.map(d => X.DOW[d]).join('/') + (r.backup != null ? ' backup ' + X.hm(r.backup) : '') + (r.strict ? ' strict' : '')),
     regular: X.candidates(cfg, A.tf).filter(i => i.kind === 'regular').map(i => ({ title: i.title, cat: i.cat, min: i.min, perWeek: i.perWeek, doneThisWeek: X.itemCount(week, i), plannedThisWeek: X.itemCount(week, i, ['planned']), src: i.src || 'bank' })),

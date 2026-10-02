@@ -31,12 +31,19 @@ const SEED_CATS = [
   { id: 'hobby',   name: 'Hobby',   color: '#E6A100', group: 'free' },   // amber: joy
   { id: 'leisure', name: 'Leisure', color: '#09A6C9', group: 'free' },   // cyan: calm
   { id: 'health',  name: 'Health',  color: '#1FAE5B', group: 'free' },   // green: nature
-  { id: 'self',    name: 'Self',    color: '#E54C9A', group: 'self' },   // pink: care
+  { id: 'self',    name: 'Self',    color: '#E54C9A', group: 'free' },   // pink: care
   { id: 'sleep',   name: 'Sleep',   color: '#4C5774', group: 'sleep' },  // slate
   { id: 'waster',  name: 'Waster',  color: '#EF4444', group: 'waste' },  // red: warning
 ];
 // colours the first version shipped with; a category still on one of these gets the new palette
 const OLD_SEED_COLORS = { pillar: ['#E08A1E', '#B4235A'], office: ['#3D6B99', '#3B7BE8'], admin: ['#7F8791', '#6B7A8F'], family: ['#2F9A62', '#F08A24', '#EA7317'], goal: ['#6C4FD0', '#7C5CFA'], hobby: ['#D4497A', '#E3A008', '#D99100'], leisure: ['#1C9DB0', '#0EA5C6', '#0B9CC0'], health: ['#8AA12A', '#22A55B'], self: ['#A0629E', '#E0559B'], sleep: ['#4B5876', '#55627A'], waster: ['#C7372F', '#E5484D'] };
+/* category types: each one changes how DayBox treats the time */
+const CAT_TYPES = [
+  { id: 'fixed', name: 'Must do',     hint: 'Work, chores, commitments. Kept out of your free-time mix.' },
+  { id: 'free',  name: 'Free time',   hint: 'Counts in your balance mix. What now? and Fill free time pick these.' },
+  { id: 'sleep', name: 'Sleep',       hint: 'Never asks to be marked, no end bell, not counted as booked time.' },
+  { id: 'waste', name: 'Time waster', hint: 'Counted as waste in Reports. Warned if it sits before 19:00.' },
+];
 const SHUTDOWN = ["Tomorrow's MIT written", 'Laptop closed', 'Phone on alerts only'];
 const T = (start, dur, title, cat, x) => Object.assign({ id: uid(), start, dur, title, cat, attach: [] }, x || {});
 function seedConfig() {
@@ -105,6 +112,7 @@ function mergeConfig(saved) {
   out.cats = (out.cats || []).slice();
   s.cats.forEach(c => { if (!ids.has(c.id)) out.cats.push(c); });
   out.cats = out.cats.map(c => (OLD_SEED_COLORS[c.id] || []).includes(String(c.color).toUpperCase()) ? Object.assign({}, c, { color: s.cats.find(x => x.id === c.id).color }) : c);
+  out.cats = out.cats.map(c => CAT_TYPES.some(t => t.id === c.group) ? c : Object.assign({}, c, { group: c.group === 'self' ? 'free' : 'fixed' })); // old 'self' type did nothing
   ['templates', 'rules', 'items', 'boredom'].forEach(k => { if (!Array.isArray(out[k])) out[k] = s[k]; });
   migrateTemplates(out);
   return out;
@@ -137,6 +145,32 @@ function migrateTemplates(cfg) {
 }
 
 const catOf = (cfg, id) => cfg.cats.find(c => c.id === id) || { id, name: id || '?', color: '#888', group: 'fixed' };
+const liveCats = cfg => cfg.cats.filter(c => !c.deleted);
+const isSleep = (cfg, id) => catOf(cfg, id).group === 'sleep';
+const isWaste = (cfg, id) => catOf(cfg, id).group === 'waste';
+const freeCats = cfg => liveCats(cfg).filter(c => c.group === 'free').map(c => c.id);
+const CAT_COLORS = ['#2F7BF5', '#F07A1A', '#7B5CFA', '#E6A100', '#09A6C9', '#1FAE5B', '#E54C9A', '#C2185B', '#6E7A91'];
+function addCat(cfg, name, group) {
+  const used = new Set(liveCats(cfg).map(c => String(c.color).toUpperCase()));
+  const c = { id: 'c_' + uid(), name: String(name || 'New category').trim() || 'New category', color: CAT_COLORS.find(x => !used.has(x)) || '#888888', group: group || 'free' };
+  cfg.cats.push(c);
+  return c;
+}
+/* soft delete: old days keep the name and colour. Recurring blocks, bank items and goal links move to `to`. */
+function deleteCat(cfg, id, to) {
+  const c = cfg.cats.find(x => x.id === id);
+  if (!c || c.deleted || to === id || (to && !liveCats(cfg).some(x => x.id === to))) return false;
+  const moved = { rules: 0, items: 0 };
+  if (to) {
+    cfg.rules.forEach(r => { if (r.cat === id && !r.deleted) { r.cat = to; moved.rules++; } });
+    cfg.items.forEach(i => { if (i.cat === id) { i.cat = to; moved.items++; } });
+    Object.values((cfg.tf || {}).goalMap || {}).forEach(g => { if (g && g.cat === id) g.cat = to; });
+  }
+  if (cfg.settings.balance) delete cfg.settings.balance[id];
+  c.deleted = true;
+  return moved;
+}
+const catUse = (cfg, id) => ({ rules: cfg.rules.filter(r => r.cat === id && !r.deleted && !r.to).length, items: cfg.items.filter(i => i.cat === id).length });
 
 /* ---------- materialising a day ---------- */
 function activeRules(cfg, date) {
@@ -333,7 +367,7 @@ function itemCount(days, it, statuses) {
   return days.reduce((a, d) => a + d.blocks.filter(b => matches(b, it) && statuses.includes(b.status)).length, 0);
 }
 function balanceState(cfg, days) {
-  const free = cfg.cats.filter(c => c.group === 'free').map(c => c.id);
+  const free = freeCats(cfg);
   const mins = {}; free.forEach(c => { mins[c] = 0; });
   days.forEach(d => d.blocks.forEach(b => { if (free.includes(b.cat) && live(b)) mins[b.cat] += b.dur; }));
   const total = Object.values(mins).reduce((a, b) => a + b, 0);
@@ -407,7 +441,7 @@ function fillDay(cfg, store, tf, date, today, nowMin) {
   const day = clone(getDay(store, cfg, date, today));
   const s = cfg.settings;
   // never fill before your day really starts (first planned block), nor in the past
-  const first = day.blocks.filter(b => live(b) && b.cat !== 'sleep').reduce((m, b) => Math.min(m, b.start), 1440);
+  const first = day.blocks.filter(b => live(b) && !isSleep(cfg, b.cat)).reduce((m, b) => Math.min(m, b.start), 1440);
   let from = Math.max(s.dayStart, first < 1440 ? first : s.dayStart);
   if (date === today) from = Math.max(from, Math.ceil(nowMin / 15) * 15);
   const MAX_ADD = 5;
@@ -458,16 +492,16 @@ function principleChecks(cfg, day, twice) {
   const out = [], s = cfg.settings;
   const act = day.blocks.filter(live);
   const awake = s.bedtime - s.dayStart;
-  const booked = unionMin(act.filter(b => b.cat !== 'sleep'), s.dayStart, s.bedtime);
+  const booked = unionMin(act.filter(b => !isSleep(cfg, b.cat)), s.dayStart, s.bedtime);
   const pct = awake > 0 ? booked / awake : 0;
   if (pct > 1 - s.buffer) out.push({ lvl: 'warn', t: 'Day is ' + Math.round(pct * 100) + '% booked. Leave ' + Math.round(s.buffer * 100) + '% free (things take longer than you think).' });
   if (!act.some(b => (b.cat === 'health' || /walk|exercise|yoga|run|gym|move|stretch|balayam/i.test(b.title)) && b.start < 900))
     out.push({ lvl: 'tip', t: 'Move by 3pm: put a 10-min walk before 15:00.' });
-  const w = act.filter(b => b.cat === 'waster');
+  const w = act.filter(b => isWaste(cfg, b.cat));
   if (w.some(b => b.start < 1140)) out.push({ lvl: 'warn', t: 'Waster box before 19:00. The app gets a box after 19:00, never in the middle of the day.' });
   const book = act.find(b => /book|read/i.test(b.title));
   if (w.length && book && w.some(b => b.start < book.start)) out.push({ lvl: 'tip', t: 'Effortful before effortless: put the book block before the waster box.' });
-  if (!act.some(b => b.cat === 'sleep')) out.push({ lvl: 'tip', t: 'No bedtime block. Give yourself a bedtime.' });
+  if (!act.some(b => isSleep(cfg, b.cat))) out.push({ lvl: 'tip', t: 'No bedtime block. Give yourself a bedtime.' });
   const mits = act.filter(b => b.mit).length;
   if (mits > 3) out.push({ lvl: 'warn', t: mits + ' MITs. Keep 1-3, or none of them is the most important.' });
   else if (mits === 0 && act.length) out.push({ lvl: 'tip', t: 'Star 1-3 MITs (most important tasks) for today.' });
@@ -488,11 +522,11 @@ function dayStats(cfg, day) {
     if (b.status === 'skipped') st.skipped.push({ start: b.start, title: b.title, cat: b.cat });
     if (b.status === 'planned') st.unmarked++;
   });
-  day.blocks.filter(b => !b.unplanned && b.cat !== 'sleep' && b.status !== 'moved').forEach(b => { st.keepable += b.dur; st.kept += actualMin(b); });
+  day.blocks.filter(b => !b.unplanned && !isSleep(cfg, b.cat) && b.status !== 'moved').forEach(b => { st.keepable += b.dur; st.kept += actualMin(b); });
   const ptitles = new Set(day.blocks.filter(b => b.pillar).map(b => norm(b.title)));
   st.pillarsPlanned = ptitles.size;
   ptitles.forEach(t => { if (day.blocks.some(b => norm(b.title) === t && ['done', 'partial'].includes(b.status))) st.pillarsKept++; });
-  st.waste = st.actual.waster || 0;
+  st.waste = Object.entries(st.actual).reduce((a, [c, m]) => a + (isWaste(cfg, c) ? m : 0), 0);
   return st;
 }
 function trackedDays(store, from, to) {
@@ -507,14 +541,14 @@ function rangeReport(cfg, store, from, to) {
   const pP = stats.reduce((a, s) => a + s.pillarsPlanned, 0), pK = stats.reduce((a, s) => a + s.pillarsKept, 0);
   const missByHour = new Array(24).fill(0);
   stats.forEach(s => s.skipped.forEach(b => { missByHour[Math.floor(b.start / 60) % 24]++; }));
-  const free = cfg.cats.filter(c => c.group === 'free').map(c => c.id);
+  const free = freeCats(cfg);
   const freeUsed = free.reduce((a, c) => a + (actual[c] || 0), 0);
   const tgt = cfg.settings.balance || {}, tsum = free.reduce((a, c) => a + (+tgt[c] || 0), 0) || 1;
   const balance = free.map(c => ({ cat: c, min: actual[c] || 0, share: freeUsed ? (actual[c] || 0) / freeUsed : 0, target: (+tgt[c] || 0) / tsum }));
   const dreamsDone = cfg.items.filter(i => i.kind === 'dream' && i.done && i.doneAt && i.doneAt >= from && i.doneAt <= to);
   const n = stats.length || 1;
   return { from, to, days: stats, tracked: stats.length, actual, planned, keptPct: keepable ? kept / keepable : null,
-    pillarPct: pP ? pK / pP : null, wastePerDay: (actual.waster || 0) / n, freeUsedPerDay: freeUsed / n, missByHour, balance, dreamsDone,
+    pillarPct: pP ? pK / pP : null, wastePerDay: Object.entries(actual).reduce((a, [c, m]) => a + (isWaste(cfg, c) ? m : 0), 0) / n, freeUsedPerDay: freeUsed / n, missByHour, balance, dreamsDone,
     closedDays: stats.filter(s => s.closed).length };
 }
 function direction(cfg, store, today) {
@@ -691,7 +725,7 @@ function applyOp(cfg, store, op, today) {
 
 root.DBX = {
   pad, dkey, parseKey, addDays, dow, weekStart, hm, toMin, durTxt, hrs, clamp, clone, uid, DOW, norm, zoneOf,
-  seedConfig, mergeConfig, migrateTemplates, catOf, SEED_CATS, SHUTDOWN, WEEK_SLOTS,
+  seedConfig, mergeConfig, migrateTemplates, catOf, liveCats, isSleep, isWaste, freeCats, addCat, deleteCat, catUse, CAT_TYPES, SEED_CATS, SHUTDOWN, WEEK_SLOTS,
   overlaps, clashWith, carve, ruleClash, makeRoom, backupSlot,
   activeRules, templateFor, attachObjs, blockFrom, weekItemsFor, buildDay, getDay, planSnapshot, lockIfDue, resetDay,
   editRule, endRule, ruleLive, lanes, live, intervals, unionMin, gaps,
