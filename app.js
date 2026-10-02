@@ -616,7 +616,7 @@ function viewToday() {
   const ppm = dayPpm();
   const actions = '<button class="iconbtn" data-act="prev" aria-label="Previous day">' + ic('left') + '</button><button class="iconbtn" data-act="next" aria-label="Next day">' + ic('right') + '</button>'
     + (isToday ? '' : '<button class="btn" data-act="gotoday">Today</button>')
-    + '<button class="btn" data-act="print">' + ic('print') + (phone ? '' : 'Print') + '</button>'
+    + '<button class="btn" data-act="print" aria-label="Print">' + ic('print') + (phone ? '' : 'Print') + '</button>'
     + (CUR <= t ? '<button class="btn pri" data-act="close">Close day</button>' : '');
   let top = '';
   if (!localStorage.getItem(LS_ONB)) top += '<div class="card inbox" style="margin-bottom:12px"><h3>Welcome to DayBox</h3><ol class="small" style="margin:0 0 10px;padding-left:18px"><li>Sign in with Google (the same account as Tenfold) so it syncs to your phone.</li><li>When a block ends, tap ✓ or ✗. That is all the logging.</li><li>Bored or free? Press <b>What now?</b></li></ol><div class="row"><button class="btn pri sm" data-act="signin">Sign in</button><button class="btn ghost sm" data-act="onb">Got it</button></div></div>';
