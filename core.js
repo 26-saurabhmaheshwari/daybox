@@ -23,20 +23,20 @@ const zoneOf = m => m < 720 ? 'morning' : m < 1020 ? 'afternoon' : 'evening';
 
 /* ---------- seeds (neutral: the repo is public; your real routine lives in my-routine.json) ---------- */
 const SEED_CATS = [
-  { id: 'pillar',  name: 'Pillar',  color: '#B4235A', group: 'fixed' },  // maroon: spirituality
-  { id: 'office',  name: 'Office',  color: '#3B7BE8', group: 'fixed' },  // blue: trust, focus
-  { id: 'admin',   name: 'Admin',   color: '#6B7A8F', group: 'fixed' },  // grey: business
-  { id: 'family',  name: 'Family',  color: '#EA7317', group: 'free' },   // orange: warmth
-  { id: 'goal',    name: 'Goal',    color: '#7C5CFA', group: 'free' },   // violet: ambition
-  { id: 'hobby',   name: 'Hobby',   color: '#D99100', group: 'free' },   // amber: joy
-  { id: 'leisure', name: 'Leisure', color: '#0B9CC0', group: 'free' },   // cyan: calm
-  { id: 'health',  name: 'Health',  color: '#22A55B', group: 'free' },   // green: nature
-  { id: 'self',    name: 'Self',    color: '#E0559B', group: 'self' },   // pink: care
-  { id: 'sleep',   name: 'Sleep',   color: '#55627A', group: 'sleep' },  // slate
-  { id: 'waster',  name: 'Waster',  color: '#E5484D', group: 'waste' },  // red: warning
+  { id: 'pillar',  name: 'Pillar',  color: '#C2185B', group: 'fixed' },  // maroon: spirituality
+  { id: 'office',  name: 'Office',  color: '#2F7BF5', group: 'fixed' },  // blue: trust, focus
+  { id: 'admin',   name: 'Admin',   color: '#6E7A91', group: 'fixed' },  // grey: business
+  { id: 'family',  name: 'Family',  color: '#F07A1A', group: 'free' },   // orange: warmth
+  { id: 'goal',    name: 'Goal',    color: '#7B5CFA', group: 'free' },   // violet: ambition
+  { id: 'hobby',   name: 'Hobby',   color: '#E6A100', group: 'free' },   // amber: joy
+  { id: 'leisure', name: 'Leisure', color: '#09A6C9', group: 'free' },   // cyan: calm
+  { id: 'health',  name: 'Health',  color: '#1FAE5B', group: 'free' },   // green: nature
+  { id: 'self',    name: 'Self',    color: '#E54C9A', group: 'self' },   // pink: care
+  { id: 'sleep',   name: 'Sleep',   color: '#4C5774', group: 'sleep' },  // slate
+  { id: 'waster',  name: 'Waster',  color: '#EF4444', group: 'waste' },  // red: warning
 ];
 // colours the first version shipped with; a category still on one of these gets the new palette
-const OLD_SEED_COLORS = { pillar: ['#E08A1E'], office: ['#3D6B99'], admin: ['#7F8791'], family: ['#2F9A62', '#F08A24'], goal: ['#6C4FD0'], hobby: ['#D4497A', '#E3A008'], leisure: ['#1C9DB0', '#0EA5C6'], health: ['#8AA12A'], self: ['#A0629E'], sleep: ['#4B5876'], waster: ['#C7372F'] };
+const OLD_SEED_COLORS = { pillar: ['#E08A1E', '#B4235A'], office: ['#3D6B99', '#3B7BE8'], admin: ['#7F8791', '#6B7A8F'], family: ['#2F9A62', '#F08A24', '#EA7317'], goal: ['#6C4FD0', '#7C5CFA'], hobby: ['#D4497A', '#E3A008', '#D99100'], leisure: ['#1C9DB0', '#0EA5C6', '#0B9CC0'], health: ['#8AA12A', '#22A55B'], self: ['#A0629E', '#E0559B'], sleep: ['#4B5876', '#55627A'], waster: ['#C7372F', '#E5484D'] };
 const SHUTDOWN = ["Tomorrow's MIT written", 'Laptop closed', 'Phone on alerts only'];
 const T = (start, dur, title, cat, x) => Object.assign({ id: uid(), start, dur, title, cat, attach: [] }, x || {});
 function seedConfig() {

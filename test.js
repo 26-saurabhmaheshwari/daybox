@@ -177,7 +177,7 @@ t('ops refuse overlaps', () => {
 });
 t('old seed colours move to the new palette, custom ones stay', () => {
   const m = X.mergeConfig({ cats: [{ id: 'goal', name: 'Goal', color: '#6C4FD0', group: 'free' }, { id: 'office', name: 'Office', color: '#123456', group: 'fixed' }] });
-  assert.strictEqual(m.cats.find(c => c.id === 'goal').color, '#7C5CFA'); assert.strictEqual(m.cats.find(c => c.id === 'office').color, '#123456');
+  assert.strictEqual(m.cats.find(c => c.id === 'goal').color, '#7B5CFA'); assert.strictEqual(m.cats.find(c => c.id === 'office').color, '#123456');
 });
 t('my-routine.json loads', () => {
   if (!fs.existsSync(__dirname + '/my-routine.json')) return;

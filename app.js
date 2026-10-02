@@ -538,155 +538,7 @@ function openClose(date) {
 
 /* ---------- views ---------- */
 function statusCounts(d) { const nm = nowMin(), t = today(); const past = d.blocks.filter(b => b.cat !== 'sleep' && (d.date < t || b.start + b.dur <= nm)); return { past: past.length, marked: past.filter(b => b.status !== 'planned').length }; }
-function dayBar(d, nm) {
-  const s = CFG.settings, span = Math.max(1, s.bedtime - s.dayStart);
-  const pct = clamp(Math.round((nm - s.dayStart) / span * 100), 0, 100);
-  return '<div class="bar day" title="Day ' + pct + '% gone"><i style="width:' + pct + '%"></i></div>';
-}
-function nowBarHtml(d, stats) {
-  const nm = nowMin(), s = CFG.settings;
-  const cur = currentBlock(d, nm);
-  const next = d.blocks.filter(X.live).filter(b => b.start > nm).sort((a, b) => a.start - b.start)[0];
-  let t, sub, blockBar = '';
-  if (nm >= s.bedtime) { t = 'Past your bedtime'; sub = 'Lights out. Close the day if you have not.'; }
-  else if (cur) {
-    const left = cur.start + cur.dur - nm, pct = Math.round((nm - cur.start) / cur.dur * 100);
-    t = '<span class="dot" style="--c:' + catOf(CFG, cur.cat).color + '"></span>' + esc(cur.title);
-    sub = durTxt(left) + ' left · ends ' + hm(cur.start + cur.dur) + (cur.checks ? ' · next check ' + hm(Math.ceil((nm + 1) / 30) * 30) : '') + (next ? ' · then ' + esc(next.title) + ' ' + hm(next.start) : '');
-    blockBar = '<div class="bar blk-bar" style="--c:' + catOf(CFG, cur.cat).color + '"><i style="width:' + pct + '%"></i></div>';
-  } else {
-    const until = next ? next.start : s.bedtime;
-    t = 'Free now'; sub = durTxt(until - nm) + ' until ' + (next ? esc(next.title) + ' ' + hm(next.start) : 'bedtime ' + hm(s.bedtime));
-  }
-  const pct = clamp(Math.round((nm - s.dayStart) / Math.max(1, s.bedtime - s.dayStart) * 100), 0, 100);
-  return '<div class="nowbar" id="nowbar"><div class="nb-main"><div class="now-t">' + t + '</div><div class="now-s">' + sub + '</div>' + blockBar + '</div>'
-    + '<div class="nb-side"><div class="nb-stats">' + (stats || '') + '<span>day ' + pct + '%</span></div><button class="btn sm ghost" data-act="bored">Bored?</button></div>'
-    + dayBar(d, nm) + '</div>';
-}
 function dismissed(date) { const o = load(LS_DISMISS) || {}; return o[date] || []; }
-/* ---------- day calendar: one row per hour, time runs left to right (:00-:30 | :30-:60) ---------- */
-let ROW_H = 44;
-function dgRows() { const s = CFG.settings, r = []; for (let h = Math.floor(s.dayStart / 60); h < Math.ceil(s.dayEnd / 60); h++) r.push(h); return r; }
-function segsOf(b) {
-  const out = [], e = b.start + b.dur;
-  for (let h = Math.floor(b.start / 60); h * 60 < e; h++) {
-    const s0 = Math.max(b.start, h * 60), s1 = Math.min(e, (h + 1) * 60);
-    if (s1 > s0) out.push({ h, l: (s0 - h * 60) / 60 * 100, w: (s1 - s0) / 60 * 100, first: s0 === b.start, last: s1 === e, min: s1 - s0 });
-  }
-  return out;
-}
-function segHtml(b, sg, main, c, extra) {
-  const cat = catOf(CFG, b.cat), t = today(), nm = nowMin();
-  const past = c.date < t || (c.date === t && b.start + b.dur <= nm);
-  const needs = past && b.status === 'planned' && !c.virtual && b.cat !== 'sleep';
-  const marked = isMarked(b), doneLock = marked && !UNLOCKED.has(b.id);
-  const isNow = c.date === t && b.start <= nm && b.start + b.dur > nm && X.live(b);
-  const cls = ['ev', 'st-' + (b.status || 'planned'), sg.first ? 'first' : '', sg.last ? 'last' : '', b.pillar ? 'pillar' : '', needs ? 'needs' : '', isNow ? 'is-now' : '', doneLock ? 'done-lock' : '', extra || ''].join(' ');
-  let inner = '';
-  // every piece of a block that wraps across hours carries its name; the time sits on the main piece
-  inner += '<span class="sg-t' + (sg.first ? '' : ' cont') + '">' + (sg.first ? '' : '↳ ') + (b.status === 'done' ? '<span class="ok">✓</span>' : '') + (b.pillar && sg.first ? ic('lock', 's-ic') : '') + (b.mit && sg.first ? '<span class="mit">★</span>' : '') + esc(b.title) + '</span>';
-  if (main && sg.min >= 25) inner += '<span class="sg-m">' + hm(b.start) + '–' + hm(b.start + b.dur) + '</span>';
-  if (needs && sg.last) inner += '<i class="sg-q" title="Not marked yet. Tap to mark done or skipped.">?</i>';
-  if (marked && sg.last) inner += doneLock ? '<button type="button" class="sg-unlock" title="Unlock to change" aria-label="Unlock to change">' + ic('lock') + '</button>' : '<span class="sg-unlock on" title="Unlocked for one change">' + ic('unlock') + '</span>';
-  if (sg.last && !b.pillar && !doneLock && c.editable) inner += '<i class="sg-rz" title="Drag to change the length"></i>';
-  return '<div class="' + cls + '" data-id="' + b.id + '" style="--c:' + cat.color + ';left:calc(' + sg.l + '% + 1px);width:calc(' + sg.w + '% - 2px)" title="' + esc(b.title) + ' ' + hm(b.start) + '–' + hm(b.start + b.dur) + '">' + inner + '</div>';
-}
-function blockSegs(b, c, extra) {
-  const ss = segsOf(b); if (!ss.length) return [];
-  const main = ss.reduce((m, x) => x.min > m.min ? x : m, ss[0]);
-  return ss.map(sg => ({ h: sg.h, html: segHtml(b, sg, sg === main, c, extra) }));
-}
-function dayGridHtml(c) {
-  const t = today(), nm = nowMin(), rows = dgRows(), by = {};
-  rows.forEach(h => { by[h] = []; });
-  c.blocks.forEach(b => blockSegs(b, c).forEach(x => { if (by[x.h]) by[x.h].push(x.html); }));
-  const nowH = c.date === t ? Math.floor(nm / 60) : -1;
-  const legend = '<div class="dg-legend"><span><i class="lg up"></i>upcoming</span><span><i class="lg nd"></i>to mark</span><span><i class="lg dn"></i>done</span><span><i class="lg sk"></i>skipped</span></div>';
-  return '<div class="dg" style="--rowh:' + ROW_H + 'px"><div class="dg-head"><span></span><div class="dg-scale"><span style="left:0">:00</span><span style="left:50%">:30</span>' + legend + '</div></div>'
-    + rows.map(h => '<div class="dg-row' + (h === nowH ? ' now' : '') + ((c.date < t || (c.date === t && (h + 1) * 60 <= nm)) ? ' past' : '') + '" data-h="' + h + '"><span class="dg-h">' + pad(h) + ':00</span><div class="dg-track">' + by[h].join('')
-      + (h === nowH ? '<i class="dg-now" style="left:' + ((nm % 60) / 60 * 100) + '%"></i>' : '') + '</div></div>').join('') + '</div>';
-}
-function bindDayGrid(host, c, h) {
-  const s = CFG.settings;
-  const minuteAt = (x, y) => {
-    for (const tr of $$('.dg-track', host)) {
-      const r = tr.getBoundingClientRect();
-      if (y >= r.top - 1 && y <= r.bottom + 1) return +tr.parentNode.dataset.h * 60 + clamp((x - r.left) / r.width, 0, 1) * 60;
-    }
-    return null;
-  };
-  host._minuteAt = minuteAt;
-  host._ghost = (start, dur) => { segEls('_drop').forEach(x => x.remove()); if (start != null) paint({ id: '_drop', start, dur, title: '', cat: 'goal', status: 'planned' }, 'drop' + (X.clashWith(c.blocks, { start, dur }) ? ' clash' : '')); };
-  const segEls = id => $$('.ev[data-id="' + id + '"]', host);
-  const paint = (b, extra) => {
-    segEls(b.id).forEach(x => x.remove());
-    blockSegs(b, c, extra).forEach(x => { const tr = $('.dg-row[data-h="' + x.h + '"] .dg-track', host); if (tr) tr.insertAdjacentHTML('beforeend', x.html); });
-  };
-  host.onpointerdown = e => {
-    if (e.button > 0) return;
-    const ub = e.target.closest('button.sg-unlock');
-    if (ub) { e.preventDefault(); UNLOCKED.add(ub.closest('.ev').dataset.id); render(); toast('Unlocked for one change.'); return; }
-    const sg = e.target.closest('.ev');
-    if (sg) {
-      const b = c.blocks.find(x => x.id === sg.dataset.id);
-      if (!b || sg.classList.contains('done-lock')) return;
-      return dragSeg(e, b, !!e.target.closest('.sg-rz'));
-    }
-    if (e.target.closest('.dg-track') && c.editable) createDrag(e);
-  };
-  function dragSeg(e, b, rz) {
-    const touch = e.pointerType === 'touch', canDrag = c.editable && !b.pillar;
-    let armed = canDrag && (!touch || rz), moved = false, lp = null, start = b.start, dur = b.dur;
-    const grab = (minuteAt(e.clientX, e.clientY) ?? b.start) - b.start;
-    if (canDrag && touch && !armed) lp = setTimeout(() => { armed = true; segEls(b.id).forEach(x => x.classList.add('lifting')); try { navigator.vibrate && navigator.vibrate(12); } catch (_) {} }, 260);
-    if (!touch && canDrag) e.preventDefault();
-    const tm = ev => { if (armed) ev.preventDefault(); };
-    const mv = ev => {
-      const dx = ev.clientX - e.clientX, dy = ev.clientY - e.clientY;
-      if (!armed) { if (Math.hypot(dx, dy) > 8) { clearTimeout(lp); lp = null; } return; }
-      if (!moved && Math.hypot(dx, dy) < 4) return;
-      moved = true; DRAGGING = true;
-      const m = minuteAt(ev.clientX, ev.clientY); if (m == null) return;
-      if (rz) dur = clamp(Math.round((m - b.start) / 15) * 15, 15, s.dayEnd - b.start);
-      else start = clamp(Math.round((m - grab) / 15) * 15, s.dayStart, s.dayEnd - b.dur);
-      const clash = X.clashWith(c.blocks, { start, dur }, b.id);
-      paint(Object.assign({}, b, { start, dur }), 'dragging' + (clash ? ' clash' : ''));
-    };
-    const cleanup = () => {
-      clearTimeout(lp);
-      removeEventListener('pointermove', mv); removeEventListener('pointerup', up); removeEventListener('pointercancel', cancel);
-      document.removeEventListener('touchmove', tm);
-      setTimeout(() => { DRAGGING = false; }, 0);
-    };
-    const up = () => { cleanup(); if (moved) h.onCommit({ c, b, to: c, start, dur }); else h.onOpen(c, b); };
-    const cancel = () => { cleanup(); if (moved) render(); };
-    document.addEventListener('touchmove', tm, { passive: false });
-    addEventListener('pointermove', mv); addEventListener('pointerup', up); addEventListener('pointercancel', cancel);
-  }
-  function createDrag(e) {
-    const m0r = minuteAt(e.clientX, e.clientY); if (m0r == null) return;
-    const m0 = clamp(Math.floor(m0r / 15) * 15, s.dayStart, s.dayEnd - 15);
-    if (e.pointerType === 'touch') {
-      const x0 = e.clientX, y0 = e.clientY;
-      const up = ev => { off(); if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 8) h.onNew(c, m0, 30); };
-      const off = () => { removeEventListener('pointerup', up); removeEventListener('pointercancel', off); };
-      addEventListener('pointerup', up); addEventListener('pointercancel', off);
-      return;
-    }
-    e.preventDefault();
-    let end = m0 + 30, moved = false;
-    const ghost = { id: '_ghost', start: m0, dur: 30, title: 'New', cat: 'goal', status: 'planned' };
-    const mv = ev => {
-      const m = minuteAt(ev.clientX, ev.clientY); if (m == null) return;
-      const nend = clamp(Math.ceil(m / 15) * 15, m0 + 15, s.dayEnd);
-      if (!moved && nend === m0 + 15 && Math.abs(ev.clientX - e.clientX) < 5) return;
-      moved = true; end = nend; ghost.dur = end - m0; ghost.title = hm(m0) + '–' + hm(end);
-      paint(ghost, 'ghost');
-    };
-    const up = () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', up); segEls('_ghost').forEach(x => x.remove()); h.onNew(c, m0, moved ? end - m0 : 30); };
-    addEventListener('pointermove', mv); addEventListener('pointerup', up);
-  }
-}
 
 const blockOf = (d, x) => x.placed ? d.blocks.find(b => b.id === x.placed) : null;
 let SUGS = [];
@@ -755,6 +607,7 @@ function fitItem(key) {
   const [kind, ref] = key.split(':');
   if (kind === 'todo') { const x = (d.todo || []).find(y => y.id === ref); return x && { kind, x, title: x.title, min: x.min || 30, cat: x.cat }; }
   if (kind === 'sug') { const sg = SUGS[+ref]; return sg && { kind, sg, title: sg.item.title, min: sg.min, cat: sg.item.cat, itemId: sg.item.id }; }
+  if (kind === 'blk') { const b = d.blocks.find(y => y.id === ref); return b && { kind, b, title: b.title, min: b.dur, cat: b.cat }; }
   if (kind === 'op') { const o = INBOX && INBOX.ops[+ref]; return o && o.op.type === 'addBlock' && { kind, o, title: o.op.block.title, min: o.op.block.dur || 30, cat: o.op.block.cat || 'goal', at: o.op.block.start }; }
   return null;
 }
@@ -763,7 +616,7 @@ function openPlace(key, start) {
   if (start == null) start = it.at != null ? it.at : ((X.gaps(d.blocks, fitFrom(d), s.bedtime, it.min)[0] || {}).start);
   if (start == null) start = fitFrom(d);
   const durs = DURS.includes(it.min) ? DURS : DURS.concat(it.min).sort((a, b) => a - b);
-  const html = '<div class="sh-h"><h2>Place on calendar</h2><span class="muted small">' + fmtShort(d.date) + '</span><button class="iconbtn" data-x aria-label="Close">×</button></div>'
+  const html = '<div class="sh-h"><h2>' + (it.kind === 'blk' ? 'Move block' : 'Place on calendar') + '</h2><span class="muted small">' + fmtShort(d.date) + '</span><button class="iconbtn" data-x aria-label="Close">×</button></div>'
     + '<div class="form"><div class="row"><span class="chip" style="--c:' + catOf(CFG, it.cat).color + '"><i></i>' + esc(catOf(CFG, it.cat).name) + '</span><b>' + esc(it.title) + '</b></div>'
     + '<div class="grid2"><label class="field"><span>Start</span><input id="pStart" type="time" step="300" value="' + hm(start) + '"></label>'
     + '<label class="field"><span>Length</span><select id="pDur">' + durs.map(x => '<option value="' + x + '"' + (x === it.min ? ' selected' : '') + '>' + durTxt(x) + '</option>').join('') + '</select></label></div>'
@@ -772,10 +625,11 @@ function openPlace(key, start) {
   openSheet(html, sh => {
     const go = () => {
       const st = toMin($('#pStart', sh).value), du = +$('#pDur', sh).value, er = $('#pErr', sh);
-      const cl = X.clashWith(d.blocks, { start: st, dur: du });
+      const cl = X.clashWith(d.blocks, { start: st, dur: du }, it.kind === 'blk' ? it.b.id : null);
       if (cl) { er.hidden = false; er.textContent = 'Overlaps ' + clashTxt(cl) + '. Pick another time.'; return; }
       if (st + du > s.dayEnd) { er.hidden = false; er.textContent = 'Ends after ' + hm(s.dayEnd) + '. Pick an earlier time.'; return; }
       const before = clone(d);
+      if (it.kind === 'blk') { it.b.start = st; it.b.dur = du; sortBlocks(d); saveDay(d); closeSheet(); render(); return toast(it.title + ' moved to ' + hm(st), 'Undo', () => { saveDay(before); render(); }); }
       const b = { id: uid(), start: st, dur: du, title: it.title, cat: it.cat, status: 'planned', attach: [], pillar: false, mit: false, src: it.kind === 'todo' ? 'todo' : it.kind === 'op' ? 'saarthi' : 'bank' };
       if (it.itemId) b.itemId = it.itemId;
       d.blocks.push(b); sortBlocks(d);
@@ -790,37 +644,107 @@ function openPlace(key, start) {
     sh.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); go(); } };
   });
 }
-function bindFitDrag() {
-  const box = $('.fitbox'), grid = $('#dayGrid'); if (!box || !grid) return;
-  box.onpointerdown = e => {
-    const row = e.target.closest('[data-drag]');
-    if (!row || e.button > 0 || e.target.closest('button,input,select')) return;
+/* ---------- Today timeline: one vertical line, free time collapses, status shown twice (bubble + chip) ---------- */
+function blkState(d, b, nm, t) {
+  if (b.status === 'done' || b.status === 'partial') return 'done';
+  if (b.status === 'skipped') return 'skip';
+  const end = b.start + b.dur;
+  if (d.date < t || (d.date === t && end <= nm)) return b.cat === 'sleep' || d.virtual ? 'past' : 'mark';
+  if (d.date === t && b.start <= nm) return 'now';
+  return 'up';
+}
+function tlCard(d, b, st, isNext) {
+  const c = catOf(CFG, b.cat), locked = isMarked(b) && !UNLOCKED.has(b.id), att = X.attachObjs(b.attach);
+  const bub = st === 'done' ? '<span class="bub dn">' + ic('check') + '</span>' : st === 'skip' ? '<span class="bub sk">×</span>' : st === 'mark' ? '<span class="bub mk">!</span>' : '<span class="bub up"></span>';
+  let right = '';
+  if (st === 'done') right = '<span class="chip dn">Done</span>';
+  else if (st === 'skip') right = '<span class="chip sk">Skipped</span>';
+  else if (st === 'mark') right = '<button type="button" class="chip mk act" data-act="tlmark" data-id="' + b.id + '" data-s="done">Mark done</button><button type="button" class="chip sk act" data-act="tlmark" data-id="' + b.id + '" data-s="skipped">Skip</button>';
+  else if (st === 'now') right = '<span class="chip nx">Now</span>';
+  else if (isNext) right = '<span class="chip nx">Next</span>';
+  if (isMarked(b)) right += locked ? '<button type="button" class="tl-lock" data-act="tlunlock" data-id="' + b.id + '" title="Unlock to change" aria-label="Unlock to change">' + ic('lock') + '</button>' : '<span class="tl-lock on" title="Unlocked for one change">' + ic('unlock') + '</span>';
+  const meta = [hm(b.start) + '–' + hm(b.start + b.dur), esc(c.name)];
+  if (b.pillar) meta.push(b.strict ? 'pillar · strict' : b.backup != null ? 'pillar · backup ' + hm(b.backup) : 'pillar');
+  if (b.checks) meta.push('checks at :00 / :30');
+  if (att.length) meta.push(att.map(a => (a.done ? '✓ ' : '') + esc(a.t)).join(', '));
+  if (b.note) meta.push(esc(b.note));
+  const h = 56 + clamp((b.dur - 30) * 0.45, 0, 56);
+  const drag = !locked && !b.pillar && st !== 'done' && st !== 'skip';
+  return '<div class="tl-row st-' + st + '" style="--c:' + c.color + ';min-height:' + Math.round(h) + 'px">'
+    + '<div class="tl-time">' + hm(b.start) + '<small>' + durTxt(b.dur) + '</small></div>'
+    + '<div class="tl-rail">' + bub + '</div>'
+    + '<div class="tl-card' + (locked ? ' locked' : '') + (drag ? ' drag' : '') + '" data-act="' + (locked ? 'noop' : 'tlopen') + '" data-id="' + b.id + '"' + (drag ? ' data-drag="blk:' + b.id + '" data-label="' + esc(b.title) + '"' : '') + '>'
+    + '<span class="k"></span><div class="m"><div class="ti">' + (b.mit ? '<span class="mit">★</span> ' : '') + (b.pillar ? ic('lock', 's-ic') + ' ' : '') + esc(b.title) + '</div><div class="me">' + meta.join(' · ') + '</div></div>'
+    + '<div class="tl-right">' + right + '</div></div></div>';
+}
+function tlFree(g, nowIn, nm, clickable) {
+  return '<div class="tl-free' + (nowIn ? ' has-now' : '') + '" data-gs="' + g.start + '" data-ge="' + g.end + '">'
+    + '<div class="tl-time">' + (nowIn ? '<span class="nowpill" id="nowpill">Now ' + hm(nm) + '</span>' : hm(g.start)) + '</div><div class="tl-rail"></div>'
+    + '<div class="tl-gap"' + (clickable ? ' data-act="tladd" data-gs="' + g.start + '" data-ge="' + g.end + '"' : '') + '><span>' + durTxt(g.end - g.start) + ' free</span>' + (clickable ? '<b>drop a task here</b>' : '') + '</div></div>';
+}
+function timelineHtml(d) {
+  const t = today(), nm = nowMin(), s = CFG.settings, past = d.date < t;
+  const shown = d.blocks.filter(b => b.status !== 'moved').sort((a, b) => a.start - b.start);
+  const live = shown.filter(X.live);
+  const from = Math.min(s.dayStart, live.length ? live[0].start : s.dayStart);
+  const to = Math.max(s.bedtime, live.length ? Math.max(...live.map(b => b.start + b.dur)) : s.bedtime);
+  const gs = X.gaps(d.blocks, live.length ? live[0].start : from, to, 15);
+  const next = d.date >= t ? live.find(b => blkState(d, b, nm, t) === 'up') : null;
+  const items = shown.map(b => ({ at: b.start, html: tlCard(d, b, blkState(d, b, nm, t), b === next) }))
+    .concat(gs.map(g => ({ at: g.start, html: tlFree(g, d.date === t && g.start <= nm && nm < g.end, nm, !past && (d.date > t || g.end > nm)) })))
+    .sort((a, b) => a.at - b.at);
+  const legend = '<div class="legend"><span class="chip dn">Done</span><span class="chip mk">To mark</span><span class="chip sk">Skipped</span><span class="chip nx">Next</span></div>';
+  return '<div class="panel tl" id="dayTl"><div class="ph"><h3>' + (d.date === t ? 'Your day' : past ? 'That day' : 'Plan for ' + fmtShort(d.date)) + '</h3>' + legend + '</div>'
+    + (items.length ? items.map(x => x.html).join('') : '<div class="empty">Nothing planned. Add a block or drag a task here.</div>')
+    + (past ? '' : '<div class="tl-addrow"><button type="button" class="btn sm" data-act="tladd">' + ic('plus') + 'Add a block</button></div>') + '</div>';
+}
+function nowBarHtml(d, stats) {
+  const nm = nowMin(), s = CFG.settings;
+  const cur = currentBlock(d, nm);
+  const next = d.blocks.filter(X.live).filter(b => b.start > nm).sort((a, b) => a.start - b.start)[0];
+  let label = 'NOW', title, from, to, left;
+  if (nm >= s.bedtime) { title = 'Past your bedtime'; from = s.bedtime; to = s.dayEnd; left = 'lights out'; }
+  else if (cur) { title = esc(cur.title); from = cur.start; to = cur.start + cur.dur; left = durTxt(to - nm) + ' left'; }
+  else { label = 'FREE NOW'; title = next ? 'Until ' + esc(next.title) : 'Until bedtime'; from = nm; to = next ? next.start : s.bedtime; left = durTxt(to - nm); }
+  const pct = clamp(Math.round((nm - from) / Math.max(1, to - from) * 100), 0, 100);
+  return '<div class="nowcard" id="nowbar"><div class="nc-main"><div class="nc-l">' + label + '</div><div class="nc-t">' + title + '</div></div>'
+    + '<div class="nc-bar"><div class="nc-track"><i style="width:' + (cur ? pct : 0) + '%"></i></div><div class="nc-times"><span>' + hm(from) + '</span><span>' + left + '</span><span>' + hm(to) + '</span></div></div>'
+    + '<div class="nc-stats">' + (stats || '') + '</div><button class="nc-btn" data-act="bored">Bored?</button></div>';
+}
+/* drag a task card or a timeline card onto a "free" line; a click without moving opens it */
+function bindDrag() {
+  const view = $('#view');
+  view.onpointerdown = e => {
+    const src = e.target.closest('[data-drag]');
+    if (!src || e.button > 0 || e.target.closest('button,input,select,.tc-chk')) return;
     const touch = e.pointerType === 'touch', x0 = e.clientX, y0 = e.clientY;
-    let armed = !touch, ghost = null, lp = null, at = null;
-    if (touch) lp = setTimeout(() => { armed = true; row.classList.add('lifting'); try { navigator.vibrate && navigator.vibrate(12); } catch (_) {} }, 260);
-    else e.preventDefault();
-    const tm = ev => { if (armed) ev.preventDefault(); };
+    let armed = !touch, ghost = null, lp = null, over = null;
+    if (touch) lp = setTimeout(() => { armed = true; src.classList.add('lifting'); try { navigator.vibrate && navigator.vibrate(12); } catch (_) {} }, 260);
+    const tm = ev => { if (armed && ghost) ev.preventDefault(); };
+    const mark = el => { if (over === el) return; if (over) over.classList.remove('over'); over = el; if (over) over.classList.add('over'); };
     const mv = ev => {
       if (!armed) { if (Math.hypot(ev.clientX - x0, ev.clientY - y0) > 8) off(); return; }
-      if (!ghost) { if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 5) return; ghost = document.createElement('div'); ghost.className = 'drag-ghost'; document.body.appendChild(ghost); DRAGGING = true; }
-      ghost.style.left = (ev.clientX + 12) + 'px'; ghost.style.top = (ev.clientY + 10) + 'px';
-      const gr = grid.getBoundingClientRect();
-      if (ev.clientX >= gr.left && ev.clientX <= gr.right) { if (ev.clientY < gr.top + 36) grid.scrollTop -= 14; else if (ev.clientY > gr.bottom - 36) grid.scrollTop += 14; }
-      if (ev.clientY > innerHeight - 48) scrollBy(0, 12); else if (ev.clientY < 56) scrollBy(0, -12);
-      const mm = grid._minuteAt ? grid._minuteAt(ev.clientX, ev.clientY) : null;
-      const inside = mm != null && ev.clientX >= gr.left && ev.clientX <= gr.right && ev.clientY >= gr.top && ev.clientY <= gr.bottom;
-      at = inside ? clamp(Math.floor(mm / 15) * 15, CFG.settings.dayStart, CFG.settings.dayEnd - 15) : null;
-      ghost.classList.toggle('over', inside);
-      const itm = fitItem(row.dataset.drag);
-      if (grid._ghost) grid._ghost(at, itm ? itm.min : 30);
-      ghost.textContent = row.dataset.label + (at != null ? ' · ' + hm(at) : ' · drop on the calendar');
+      if (!ghost) {
+        if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 6) return;
+        ghost = document.createElement('div'); ghost.className = 'drag-ghost'; ghost.textContent = src.dataset.label; document.body.appendChild(ghost);
+        DRAGGING = true; document.body.classList.add('dragging-task');
+      }
+      ev.preventDefault();
+      ghost.style.left = (ev.clientX + 14) + 'px'; ghost.style.top = (ev.clientY + 10) + 'px';
+      if (ev.clientY > innerHeight - 60) scrollBy(0, 14); else if (ev.clientY < 70) scrollBy(0, -14);
+      const hit = document.elementFromPoint(ev.clientX, ev.clientY);
+      mark(hit && hit.closest('.tl-free[data-gs]'));
     };
-    const up = () => { const drop = at; const was = !!ghost; off(); if (was && drop != null) openPlace(row.dataset.drag, drop); };
+    const up = () => {
+      const was = !!ghost, target = over; off();
+      if (was && target) openPlace(src.dataset.drag, +target.dataset.gs);
+    };
     const off = () => {
-      clearTimeout(lp);
+      clearTimeout(lp); mark(null);
       removeEventListener('pointermove', mv); removeEventListener('pointerup', up); removeEventListener('pointercancel', off);
       document.removeEventListener('touchmove', tm);
-      row.classList.remove('lifting'); if (ghost) ghost.remove(); ghost = null; if (grid._ghost) grid._ghost(null);
+      src.classList.remove('lifting'); if (ghost) ghost.remove(); ghost = null;
+      document.body.classList.remove('dragging-task');
       setTimeout(() => { DRAGGING = false; }, 0);
     };
     document.addEventListener('touchmove', tm, { passive: false });
@@ -846,7 +770,7 @@ function viewToday() {
     + (CUR <= t ? '<button class="btn pri" data-act="close">Close day</button>' : '');
   let top = '';
   if (!localStorage.getItem(LS_ONB)) top += '<div class="card inbox" style="margin-bottom:12px"><h3>Welcome to DayBox</h3><ol class="small" style="margin:0 0 10px;padding-left:18px"><li>Sign in with Google (the same account as Tenfold) so it syncs to your phone.</li><li>When a block ends, tap ✓ or ✗. That is all the logging.</li><li>Bored or free? Press <b>What now?</b></li></ol><div class="row"><button class="btn pri sm" data-act="signin">Sign in</button><button class="btn ghost sm" data-act="onb">Got it</button></div></div>';
-  const statTxt = d.untracked ? '' : '<span>' + Math.round(pc.pct * 100) + '% booked</span><span>' + durTxt(free) + ' free</span>' + (pil.pillarsPlanned ? '<span>' + pil.pillarsKept + '/' + pil.pillarsPlanned + ' pillars</span>' : '') + (sc.past ? '<span>' + sc.marked + '/' + sc.past + ' marked</span>' : '');
+  const statTxt = d.untracked ? '' : (sc.past ? '<span><b>' + sc.marked + '/' + sc.past + '</b>marked</span>' : '') + (pil.pillarsPlanned ? '<span><b>' + pil.pillarsKept + '/' + pil.pillarsPlanned + '</b>pillars</span>' : '') + '<span><b>' + durTxt(free) + '</b>free</span>';
   if (isToday) top += nowBarHtml(d, statTxt);
   if (isToday && pendingOps()) top += '<div class="al" style="margin-bottom:10px">' + ic('saarthi', 's-ic') + '<span>Saarthi has <b>' + pendingOps() + '</b> suggestions.</span><button class="btn sm x" data-act="nav" data-v="saarthi">Open</button></div>';
   if (yday && yday.close && yday.close.mit && isToday) top += '<div class="al" style="margin-bottom:10px">★ <span>Today\'s MIT (from last night): <b>' + esc(yday.close.mit) + '</b></span></div>';
@@ -858,38 +782,24 @@ function viewToday() {
     const must = pc.list.filter(a => a.lvl === 'alert' && !dis.includes(a.t));
     const tips = pc.list.filter(a => a.lvl !== 'alert' && !dis.includes(a.t));
     const extra = (slipOn(CUR) ? '<span class="warn-t">sanyam slip logged</span>' : '') + (tips.length ? '<button class="linkbtn" data-act="tips">' + tips.length + ' tip' + (tips.length > 1 ? 's' : '') + ' ' + (TIPS_OPEN ? '▾' : '▸') + '</button>' : '');
-    if (!isToday || extra) top += '<div class="sumline">' + (isToday ? '' : statTxt) + extra + '</div>';
+    if (!isToday || extra) top += '<div class="sumline">' + (isToday ? '' : statTxt.replace(/<\/?b>/g, ' ')) + extra + '</div>';
     const shown = must.concat(TIPS_OPEN ? tips : []);
     if (offers.length || shown.length)
       top += '<div class="alerts">' + offers.map(o => '<div class="al alert"><span>Missed <b>' + esc(o.block.title) + '</b>. Backup is ready.</span><button class="btn sm x" data-act="backup" data-id="' + o.block.id + '" data-at="' + o.at + '">Use backup ' + hm(o.at) + '</button></div>').join('')
         + shown.map(a => '<div class="al ' + a.lvl + '"><span>' + esc(a.t) + '</span><button class="btn ghost sm x" data-act="dismiss" data-t="' + esc(a.t) + '" aria-label="Dismiss">×</button></div>').join('') + '</div>';
   }
-  const col = { day: d, date: CUR, blocks: d.blocks, editable: true, past, virtual: d.virtual && !d.untracked, showGaps: !past, twice };
-  const grid = '<div class="gwrap daygrid" id="dayGrid">' + dayGridHtml(col) + '</div>';
-  const hint = '';
-  let body;
-  // one calendar only: the To fit list sits beside (laptop) or above (phone) the timeline
   const fit = fitHtml(d);
-  if (phone || !fit) body = top + fit + grid + hint;
-  else body = top + '<div class="tsplit"><div class="tleft">' + grid + hint + '</div><div class="tright">' + fit + '</div></div>';
-  const showGrid = true;
+  const tl = d.untracked ? '' : timelineHtml(d);
+  const body = top + (fit ? '<div class="tcols"><div class="tc-left">' + tl + '</div><div class="tc-right">' + fit + '</div></div>' : tl);
   return {
-    title: isToday ? 'Today' : fmtShort(CUR), sub: fmtLong(CUR) + (d.tpl ? ' · ' + esc(d.tpl.name) : ''), actions, body,
+    title: isToday ? 'Today' : fmtShort(CUR), sub: fmtLong(CUR), actions, body,
     after() {
       const fi = $('#fitTitle'); if (fi) fi.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); fitAdd(); } };
-      if (!showGrid) return;
-      const gw = $('#dayGrid');
-      // one row per hour, sized so the whole day fits the window (phone: fixed rows, scrolls)
-      const rows = dgRows().length;
-      const ideal = phone ? 40 : clamp(Math.floor((innerHeight - gw.getBoundingClientRect().top - scrollY - 24 - 24) / rows), 30, 56);
-      if (ideal !== ROW_H) { ROW_H = ideal; return render(); }
-      bindDayGrid(gw, col, dayHandlers);
-      bindFitDrag();
+      bindDrag();
       if (SCROLL_NOW) {
         SCROLL_NOW = false;
-        const first = d.blocks.filter(b => b.cat !== 'sleep').reduce((m, b) => Math.min(m, b.start), 1440);
-        const target = isToday ? nm : (first < 1440 ? first : s.dayStart);
-        gw.scrollTop = Math.max(0, (Math.floor(target / 60) - Math.floor(s.dayStart / 60) - 1) * ROW_H);
+        const el = $('.tl-row.st-now') || $('#nowpill') || $('.tl-row.st-up');
+        if (isToday && el) { const y = el.getBoundingClientRect().top + scrollY - 200; if (y > innerHeight * 0.4) scrollTo(0, y); }
       }
     },
   };
@@ -1341,9 +1251,8 @@ function tick() {
   if (crossed && VIEW === 'today' && CUR === t && !DRAGGING && $('#ov').hidden) { lastTick = nm; render(); return; }
   lastTick = nm;
   if (VIEW === 'today' && CUR === t && !DRAGGING && $('#ov').hidden) {
-    const nb = $('#nowbar'); if (nb && d) { const st = nb.querySelector('.nb-stats'); const keep = st ? Array.from(st.children).slice(0, -1).map(x => x.outerHTML).join('') : ''; nb.outerHTML = nowBarHtml(d, keep); }
-    const nl = $('.dg-now');
-    if (nl) { if (Math.floor(nm / 60) !== +nl.closest('.dg-row').dataset.h) { render(); return; } nl.style.left = ((nm % 60) / 60 * 100) + '%'; }
+    const nb = $('#nowbar'); if (nb && d) { const st = nb.querySelector('.nc-stats'); nb.outerHTML = nowBarHtml(d, st ? st.innerHTML : ''); }
+    const np = $('#nowpill'); if (np) np.textContent = 'Now ' + hm(nm);
     renderNav();
   }
 }
@@ -1362,6 +1271,10 @@ const ACTS = {
   prev: () => { CUR = addDays(CUR, -1); SCROLL_NOW = true; render(); },
   next: () => { CUR = addDays(CUR, 1); SCROLL_NOW = true; render(); },
   noop: () => {},
+  tlopen: a => { const d = AG_DAY, b = d && d.blocks.find(x => x.id === a.dataset.id); if (b) openBlock(d, b); },
+  tlunlock: a => { UNLOCKED.add(a.dataset.id); render(); toast('Unlocked for one change. Tap the card to edit it.'); },
+  tlmark: a => { const d = AG_DAY, b = d && d.blocks.find(x => x.id === a.dataset.id); if (!b) return; const prev = b.status; b.status = a.dataset.s; saveDay(d); render(); toast(b.title + (b.status === 'done' ? ': done' : ': skipped'), 'Undo', () => { b.status = prev; saveDay(d); render(); }); },
+  tladd: a => { const d = AG_DAY || day(CUR), s = CFG.settings; let start, dur = 30; if (a.dataset.gs) { const gs = +a.dataset.gs, ge = +a.dataset.ge; start = Math.max(gs, CUR === today() ? Math.ceil(nowMin() / 5) * 5 : gs); dur = Math.max(5, Math.min(30, ge - start)); } else { const g = X.gaps(d.blocks, fitFrom(d), s.dayEnd, 15)[0]; start = g ? g.start : fitFrom(d); if (g) dur = Math.min(30, g.end - g.start); } openBlock(d, null, { start, dur }); },
   dsgo: a => { CUR = a.dataset.d; SCROLL_NOW = true; render(); },
   dsweek: a => { CUR = addDays(CUR, +a.dataset.w); SCROLL_NOW = true; render(); },
   fitadd: fitAdd,
