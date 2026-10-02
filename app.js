@@ -873,7 +873,7 @@ function viewBank() {
       + '<label class="check" style="margin-bottom:12px"><input type="checkbox" id="tfOn"' + (CFG.tf.on ? ' checked' : '') + '> Use them in suggestions</label>';
     if (!TF) body += '<div class="empty">No Tenfold data found. Sign in with the same Google account as Tenfold, or open DayBox in the same browser where you use Tenfold.</div>';
     else if (!gs.length) body += '<div class="empty">No live nugget minis in Tenfold. Make a mini a Live nugget there and it shows here.</div>';
-    else body += '<table class="tbl" id="tfTbl"><thead><tr><th>Nugget</th><th>Left</th><th>Chunk (min)</th></tr></thead><tbody>' + gs.map(g => { const c = catOf(CFG, g.cat); const left = !(+g.target) ? 'no target' : g.left <= 0 ? 'done' : g.leftMin != null ? durTxt(g.leftMin) : g.left + ' ' + esc(g.unit || ''); return '<tr data-id="' + esc(g.id) + '"><td style="text-align:left"><b>' + esc(g.name) + '</b><div class="muted small">' + (g.mini && g.mini !== g.name ? esc(g.mini) + ' · ' : '') + '<span class="chip" style="--c:' + c.color + '"><i></i>' + esc(c.name) + '</span>' + (g.target ? ' ' + (g.cur || 0) + '/' + g.target + ' ' + esc(g.unit || '') : '') + '</div></td><td class="mono small">' + left + '</td><td><input type="number" min="10" step="5" data-f="chunk" value="' + g.chunk + '" style="width:76px"></td></tr>'; }).join('') + '</tbody></table>';
+    else body += '<table class="tbl" id="tfTbl"><thead><tr><th>Nugget</th><th>Left</th><th>Chunk (min)</th></tr></thead><tbody>' + gs.map(g => { const c = catOf(CFG, g.cat); const left = !(+g.target) ? 'no target' : g.left <= 0 ? 'done' : g.leftMin != null ? durTxt(g.leftMin) : g.left + ' ' + esc(g.unit || ''); return '<tr data-id="' + esc(g.id) + '"><td style="text-align:left"><b>' + esc(g.name) + '</b><div class="muted small">' + (g.mini && g.mini !== g.name ? esc(g.mini) + ' · ' : '') + '<span class="chip" style="--c:' + c.color + '"><i></i>' + esc(c.name) + '</span>' + (g.target ? ' ' + (g.cur || 0) + '/' + g.target + ' ' + esc(g.unit || '') : '') + '</div></td><td class="mono small">' + left + '</td><td>' + (g.via ? '<span class="muted small">in ' + esc(g.via) + '</span>' : '<input type="number" min="10" step="5" data-f="chunk" value="' + g.chunk + '" style="width:76px">') + '</td></tr>'; }).join('') + '</tbody></table>';
     body += '</div>';
   } else if (tab === 'nongoals') {
     const doneTxt = it => { const h = X.hoursDone(STORE, it), ago = X.lastDone(STORE, it, t); return (h ? durTxt(h) + ' done' : 'not done yet') + (ago == null ? '' : ' · last ' + (ago === 1 ? 'yesterday' : ago + ' days ago')); };
@@ -904,7 +904,7 @@ function viewBank() {
       const tb = $('#tfTbl');
       if (tb) tb.onchange = e => {
         const tr = e.target.closest('tr'); const id = tr.dataset.id;
-        CFG.tf.goalMap[id] = { chunk: Math.max(10, +e.target.value || 45) }; // only the chunk is yours, the rest follows Tenfold
+        CFG.tf.goalMap[id] = Object.assign({}, CFG.tf.goalMap[id], { chunk: Math.max(10, +e.target.value || 45) }); // the chunk is yours, the rest follows Tenfold
         saveCfg();
       };
       $$('[data-funadd]').forEach(b => {

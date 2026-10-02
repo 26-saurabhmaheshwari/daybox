@@ -238,7 +238,7 @@ function weekItemsFor(cfg, date) {
 // what each line draws from: the lists you already keep
 function pickPool(cfg, tf, k) {
   const by = f => cfg.items.filter(i => !i.deleted && f(i)).map(i => ({ id: 'item:' + i.id, itemId: i.id, title: i.title, cat: i.cat, item: i }));
-  if (k === 'career') return tfGoals(cfg, tf).filter(g => !(+g.target) || g.left > 0).map(g => ({ id: 'tf:' + g.id, itemId: 'tf:' + g.id, title: g.name, cat: g.cat, leftMin: g.leftMin, chunk: g.chunk }))
+  if (k === 'career') return tfGoals(cfg, tf).filter(g => !g.via && (!(+g.target) || g.left > 0)).map(g => ({ id: 'tf:' + g.id, itemId: 'tf:' + g.id, title: g.name, cat: g.cat, leftMin: g.leftMin, chunk: g.chunk }))
     .concat(by(i => i.kind === 'regular'));
   if (k === 'relationship') return by(i => i.cat === 'family').concat(by(i => i.kind === 'dream' && i.cat !== 'family'));
   if (k === 'self') return by(i => i.kind === 'fun' && (i.cat === 'self' || i.cat === 'hobby'));
@@ -491,7 +491,7 @@ function tfGoals(cfg, tf) {
     return { id: g.id, name: par.name || g.name, mini: g.name, tfCat, // shown by the parent goal's name
       sec: g.sec, secLabel: SEC[g.sec], cur: g.cur, target: g.target, unit, left,
       leftMin: minPer && +g.target ? Math.round(left * minPer) : null, // null: unit is not time, so DayBox cannot tell minutes left
-      cat: tfCatId(cfg, tfCat), chunk: m.chunk || m.min || 45 };
+      cat: tfCatId(cfg, tfCat), chunk: m.chunk || m.min || 45, via: m.via || null }; // via: a routine block already does it
   });
 }
 /* a nugget sits in the DayBox category with the same name as its Tenfold category */
@@ -509,7 +509,7 @@ function ensureTfCats(cfg, tf) {
 function candidates(cfg, tf) {
   const list = cfg.items.filter(i => !i.deleted).map(i => Object.assign({}, i)); // dreams are never 'done': they keep getting time
   // nuggets come in chunks until Tenfold says nothing is left (done blocks here do not count until you log them in Tenfold)
-  if (cfg.tf.on) tfGoals(cfg, tf).filter(g => !(+g.target) || g.left > 0).forEach(g => list.push({ id: 'tf:' + g.id, kind: 'nugget', title: g.name, cat: g.cat, min: g.chunk, leftMin: g.leftMin, energy: 'deep', zone: 'any', src: 'tenfold' }));
+  if (cfg.tf.on) tfGoals(cfg, tf).filter(g => !g.via && (!(+g.target) || g.left > 0)).forEach(g => list.push({ id: 'tf:' + g.id, kind: 'nugget', title: g.name, cat: g.cat, min: g.chunk, leftMin: g.leftMin, energy: 'deep', zone: 'any', src: 'tenfold' }));
   return list;
 }
 const matches = (b, it) => b.itemId === it.id || norm(b.title) === norm(it.title);
@@ -902,6 +902,16 @@ function applyOp(cfg, store, op, today) {
     const mr = makeRoom(cfg, Object.assign({}, r, op.patch || {}), r.id, today);
     if (mr.error) return mr;
     editRule(cfg, r.id, op.patch || {}, today);
+    return { cfg: true };
+  }
+  if (op.type === 'setChunk' || op.type === 'setNugget') { // a Tenfold nugget: chunk (minutes per sitting), via (a routine block that already does it, '' clears)
+    if (!op.goal) return { error: op.type + ' needs goal (the Tenfold id)' };
+    if (op.chunk != null && !(+op.chunk >= 10)) return { error: 'chunk must be 10+ minutes' };
+    cfg.tf.goalMap = cfg.tf.goalMap || {};
+    const m = Object.assign({}, cfg.tf.goalMap[op.goal] || {});
+    if (op.chunk != null) m.chunk = Math.round(+op.chunk);
+    if (op.via != null) { if (op.via) m.via = String(op.via); else delete m.via; }
+    cfg.tf.goalMap[op.goal] = m;
     return { cfg: true };
   }
   if (op.type === 'editItem' || op.type === 'removeItem') {

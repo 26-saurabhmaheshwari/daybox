@@ -113,7 +113,7 @@ async function buildPull(nDays) {
     direction: X.direction(cfg, S, t).map(m => m.label + ': ' + (m.fmt === 'pct' ? pct(m.now) : m.now == null ? '-' : X.durTxt(m.now)) + ' vs ' + (m.fmt === 'pct' ? pct(m.before) : m.before == null ? '-' : X.durTxt(m.before)) + (m.enough ? '' : ' (not enough data)')),
     pillarStreaks: X.streaks(cfg, S, t).map(s => s.title + ' ' + s.days + ' days'),
     sanyam: A.tf ? X.sanyamAnalysis(cfg, S, A.tf, t).map(a => ({ habit: a.habit.name, slips: a.slips, recent: a.recent, slipDaysTracked: a.slipDays, cleanDaysTracked: a.cleanDays, findings: a.findings, fixes: a.fixes, notes: a.notes })) : 'no Tenfold data',
-    tenfoldGoals: A.tf ? X.tfGoals(cfg, A.tf).map(g => g.name + (g.mini && g.mini !== g.name ? ' (mini: ' + g.mini + ')' : '') + ' [' + g.secLabel + (g.target ? ', ' + (g.cur || 0) + '/' + g.target + ' ' + (g.unit || '') : '') + (g.leftMin != null ? ', ' + X.durTxt(g.leftMin) + ' left' : '') + ', chunk ' + g.chunk + 'm' + ']') : 'no Tenfold data',
+    tenfoldGoals: A.tf ? X.tfGoals(cfg, A.tf).map(g => g.name + (g.mini && g.mini !== g.name ? ' (mini: ' + g.mini + ')' : '') + ' [' + g.secLabel + (g.target ? ', ' + (g.cur || 0) + '/' + g.target + ' ' + (g.unit || '') : '') + (g.leftMin != null ? ', ' + X.durTxt(g.leftMin) + ' left' : '') + (g.via ? ', done inside the ' + g.via + ' routine block, never book it' : ', chunk ' + g.chunk + 'm') + ']') : 'no Tenfold data',
     lastInbox: A.inbox ? { at: A.inbox.at && new Date(A.inbox.at).toISOString(), ops: (A.inbox.ops || []).map(o => o.id + ' ' + o.state + ': ' + o.label) } : null,
     learnings: (A.memory.learnings || []).slice(-30).map(l => l.text),
     days,

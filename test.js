@@ -296,6 +296,15 @@ t('routine ideas rotate one a day, every idea gets its turn', () => {
   ['A', 'B', 'C', 'D', 'E'].forEach(x => assert(seen.includes(x), x + ' never came'));
   for (let i = 1; i < seen.length; i++) assert.notStrictEqual(seen[i], seen[i - 1], 'same idea two days running');
 });
+t('setNugget: chunk kept when via is set, a via nugget is never booked or picked', () => {
+  const m = X.seedConfig(); m.items = [];
+  const tf = { goals: [{ id: 'p', name: 'Kids', cat: 'Learning', unit: 'Minutes', sec: 'yearly' }, { id: 'a', name: 'SRM', sec: 'active', parentId: 'p', cur: 0, target: 60 }] };
+  X.applyOp(m, { days: {} }, { type: 'setChunk', goal: 'a', chunk: 20 }, TODAY);
+  X.applyOp(m, { days: {} }, { type: 'setNugget', goal: 'a', via: 'Kids slot' }, TODAY);
+  assert.strictEqual(m.tf.goalMap.a.chunk, 20); assert.strictEqual(X.tfGoals(m, tf)[0].via, 'Kids slot');
+  assert(!X.candidates(m, tf).some(c => c.id === 'tf:a')); assert.strictEqual(X.pickPool(m, tf, 'career').length, 0);
+  assert(X.applyOp(m, { days: {} }, { type: 'setChunk', goal: 'a', chunk: 5 }, TODAY).error);
+});
 t('my-routine.json loads', () => {
   if (!fs.existsSync(__dirname + '/my-routine.json')) return;
   const o = JSON.parse(read('my-routine.json')); const m = X.mergeConfig(o.config);
