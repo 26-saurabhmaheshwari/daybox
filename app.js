@@ -516,9 +516,10 @@ function clockHtml(d, big) {
   const t = today(), nm = nowMin(), byMin = {}, seen = new Set();
   const mins = []; CLOCK_ROWS.forEach(r => mins.push(...cellMins(r)));
   mins.slice().sort((a, b) => a - b).forEach(m => { const b = cellBlock(d.blocks, m); byMin[m] = { b, first: !!b && !seen.has(b.id) }; if (b) seen.add(b.id); });
-  const cell = (m, pm) => {
-    const x = byMin[m], b = x.b, isNow = d.date === t && nm >= m && nm < m + 30;
-    const cls = 'ck-c' + (pm ? ' pm' : '') + (isNow ? ' now' : '');
+  // span: 2 when one block fills both halves of the hour (cells merge into one wide bar)
+  const cell = (m, pm, span) => {
+    const x = byMin[m], b = x.b, isNow = d.date === t && nm >= m && nm < m + 30 * (span || 1);
+    const cls = 'ck-c' + (pm ? ' pm' : '') + (isNow ? ' now' : '') + (span === 2 ? ' span2' : '');
     if (!b) return '<div class="' + cls + ' empty" data-m="' + m + '"></div>';
     const st = blkState(d, b, nm, t), c = catOf(CFG, b.cat);
     const locked = isMarked(b) && !UNLOCKED.has(b.id);
@@ -526,8 +527,8 @@ function clockHtml(d, big) {
     let inner = '';
     if (x.first) {
       inner = '<span class="ck-t">' + esc(b.title) + '</span>' + (big ? '<span class="ck-m">' + hm(b.start) + '</span>' : '');
-      if (big && (st === 'done' || st === 'mark')) inner += '<i class="ck-i">' + (st === 'done' ? '✓' : '!') + '</i>';
-    }
+    } else if (big) inner = '<span class="ck-t cont">↳ ' + esc(b.title) + '</span>';
+    if (big && (st === 'done' || st === 'mark')) inner += '<i class="ck-i">' + (st === 'done' ? '✓' : '!') + '</i>';
     return '<div class="' + cls + ' st-' + st + (x.first ? ' first' : '') + (drag ? ' drag' : '') + '" data-m="' + m + '" data-id="' + b.id + '" style="--k:' + c.color + '"'
       + (drag ? ' data-drag="blk:' + b.id + '" data-label="' + esc(b.title) + '"' : '') + ' title="' + esc(b.title) + ' ' + hm(b.start) + '–' + hm(b.start + b.dur) + '">' + inner + '</div>';
   };
@@ -535,7 +536,11 @@ function clockHtml(d, big) {
   CLOCK_ROWS.forEach((r, i) => {
     if (i === 6) h += '<div class="ck-zone"><span>AM · night</span><span>PM · afternoon</span></div>';
     const ms = cellMins(r);
-    h += '<span class="ck-r">' + r + '</span>' + ms.map((m, j) => cell(m, j === 2)).join('');
+    h += '<span class="ck-r">' + r + '</span>';
+    [[ms[0], ms[1], false], [ms[2], ms[3], true]].forEach(([m0, m1, pm]) => {
+      const b0 = byMin[m0].b;
+      h += b0 && b0 === byMin[m1].b ? cell(m0, pm, 2) : cell(m0, pm) + cell(m1, false);
+    });
   });
   return h + '</div>';
 }
