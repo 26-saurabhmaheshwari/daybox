@@ -342,19 +342,39 @@ function tfGoals(cfg, tf) {
   const SEC = { active: 'Live nugget', progress: 'This quarter', yearly: 'Yearly' };
   // only live-nugget minis (goals carved out of a parent goal): the small pieces you are on now
   return tf.goals.filter(g => g && g.parentId && g.sec === 'active' && !g.deleted && !g.done).map(g => {
-    const txt = (g.cat || '') + ' ' + (g.name || '');
-    const guess = /health|fit|exercise|yoga|run|gym|walk|weight/i.test(txt) ? 'health' : /hobby|music|art|creat|paint|guitar|sing|draw|sketch/i.test(txt) ? 'hobby' : /family|kid|wife|parent/i.test(txt) ? 'family' : 'goal';
+    const tfCat = g.cat || ((tf.goals.find(p => p.id === g.parentId) || {}).cat) || '';
     const m = (cfg.tf.goalMap || {})[g.id] || {};
-    return { id: g.id, name: g.name, tfCat: g.cat, sec: g.sec, secLabel: SEC[g.sec], cur: g.cur, target: g.target, unit: g.unit,
-      on: m.on == null ? g.sec === 'active' : !!m.on, cat: m.cat || guess, min: m.min || 45, perWeek: m.perWeek || 3 };
+    return { id: g.id, name: g.name, tfCat, sec: g.sec, secLabel: SEC[g.sec], cur: g.cur, target: g.target, unit: g.unit,
+      on: m.on == null ? g.sec === 'active' : !!m.on, cat: tfCatId(cfg, tfCat), min: m.min || 45, perWeek: m.perWeek || 3 };
   });
 }
+/* a nugget sits in the DayBox category with the same name as its Tenfold category */
+const tfCatId = (cfg, name) => { const c = liveCats(cfg).find(x => norm(x.name) === norm(name)); return c ? c.id : 'goal'; };
+/* add a DayBox category for each Tenfold category a nugget uses (unless you deleted one with that name). Returns names added. */
+function ensureTfCats(cfg, tf) {
+  const added = [];
+  tfGoals(cfg, tf).forEach(g => {
+    const n = String(g.tfCat || '').trim();
+    if (!n || cfg.cats.some(c => norm(c.name) === norm(n))) return;
+    addCat(cfg, n); added.push(n);
+  });
+  return added;
+}
 function candidates(cfg, tf) {
-  const list = cfg.items.filter(i => !i.deleted && !(i.kind === 'dream' && i.done)).map(i => Object.assign({}, i));
+  const list = cfg.items.filter(i => !i.deleted).map(i => Object.assign({}, i)); // dreams are never 'done': they keep getting time
   if (cfg.tf.on) tfGoals(cfg, tf).filter(g => g.on).forEach(g => list.push({ id: 'tf:' + g.id, kind: 'regular', title: g.name, cat: g.cat, min: g.min, perWeek: g.perWeek, energy: 'deep', zone: 'any', src: 'tenfold' }));
   return list;
 }
 const matches = (b, it) => b.itemId === it.id || norm(b.title) === norm(it.title);
+/* days since this item was last done (done or partial), null if not in the last 60 days */
+function lastDone(store, it, date) {
+  for (let i = 1; i <= 60; i++) { const d = store.days[addDays(date, -i)]; if (d && (d.blocks || []).some(b => matches(b, it) && ['done', 'partial'].includes(b.status))) return i; }
+  return null;
+}
+/* minutes really spent on this item, all tracked days */
+const hoursDone = (store, it) => Object.values(store.days).reduce((a, d) => a + ((d && d.blocks) || []).filter(b => matches(b, it)).reduce((x, b) => x + actualMin(b), 0), 0);
+/* hobbies + leisure have no length of their own: DayBox sizes them to the gap */
+const funMin = (it, free) => clamp(Math.floor(free * 0.6 / 15) * 15, 20, it.cat === 'leisure' ? 45 : 60);
 function weekDays(store, cfg, date, today) { const ws = weekStart(date); return [0, 1, 2, 3, 4, 5, 6].map(i => getDay(store, cfg, addDays(ws, i), today)); }
 function itemCount(days, it, statuses) {
   statuses = statuses || ['done', 'partial'];
@@ -381,7 +401,7 @@ function suggest(cfg, store, tf, date, gap, today, n) {
   const day = getDay(store, cfg, date, today);
   const scored = [];
   candidates(cfg, tf).forEach(it => {
-    const need = it.min || 30;
+    const need = it.kind === 'fun' ? funMin(it, free) : it.min || 30;
     if (need > free && !(free >= 25 && free >= need * 0.5)) return;
     const fit = Math.max(15, Math.floor(Math.min(need, free) / 5) * 5);
     let s = 0; const why = [];
@@ -390,6 +410,9 @@ function suggest(cfg, store, tf, date, gap, today, n) {
       if (behind === 0) { s += 0.2; why.push(done + '/' + per + ' this week, on track'); }
       else { s += 2 + 2 * behind / per + Math.min(1.5, behind / daysLeft * 1.5); why.push(done + '/' + per + ' this week'); }
       if (it.src === 'tenfold') why.push('Tenfold goal');
+    } else if (it.kind === 'fun') {
+      const ago = lastDone(store, it, date);
+      s += 1.2 + (ago == null ? 1.5 : Math.min(1.5, ago / 7)); why.push(ago == null ? 'not done lately' : 'last done ' + ago + 'd ago');
     } else { s += 1.5; why.push('from your dream list'); }
     const d = def[it.cat] || 0;
     if (d > 0.05) { s += d * 4; why.push(catOf(cfg, it.cat).name + ' is behind your balance'); }
@@ -397,7 +420,7 @@ function suggest(cfg, store, tf, date, gap, today, n) {
     if (it.energy === 'deep') { if (zone === 'morning') s += 0.8; else if (zone === 'evening') s -= 1; } else s += 0.2;
     if (day.blocks.some(b => matches(b, it) && live(b))) return;  // one of each per day
     if (free >= need) s += 0.5; else why.push('short ' + fit + 'm version');
-    scored.push({ item: it, score: s, min: fit, why: why.join(' · ') });
+    scored.push({ item: it, score: s, min: it.kind === 'fun' ? need : fit, why: why.join(' · ') });
   });
   scored.sort((a, b) => b.score - a.score);
   const pick = [], seen = new Set();
@@ -539,10 +562,11 @@ function rangeReport(cfg, store, from, to) {
   const freeUsed = free.reduce((a, c) => a + (actual[c] || 0), 0);
   const tgt = cfg.settings.balance || {}, tsum = free.reduce((a, c) => a + (+tgt[c] || 0), 0) || 1;
   const balance = free.map(c => ({ cat: c, min: actual[c] || 0, share: freeUsed ? (actual[c] || 0) / freeUsed : 0, target: (+tgt[c] || 0) / tsum }));
-  const dreamsDone = cfg.items.filter(i => i.kind === 'dream' && i.done && i.doneAt && i.doneAt >= from && i.doneAt <= to);
+  const funDone = cfg.items.filter(i => !i.deleted && (i.kind === 'dream' || i.kind === 'fun'))
+    .map(i => ({ title: i.title, cat: i.cat, min: days.reduce((a, d) => a + d.blocks.filter(b => matches(b, i)).reduce((x, b) => x + actualMin(b), 0), 0) })).filter(x => x.min).sort((a, b) => b.min - a.min);
   const n = stats.length || 1;
   return { from, to, days: stats, tracked: stats.length, actual, planned, keptPct: keepable ? kept / keepable : null,
-    pillarPct: pP ? pK / pP : null, wastePerDay: Object.entries(actual).reduce((a, [c, m]) => a + (isWaste(cfg, c) ? m : 0), 0) / n, freeUsedPerDay: freeUsed / n, missByHour, balance, dreamsDone,
+    pillarPct: pP ? pK / pP : null, wastePerDay: Object.entries(actual).reduce((a, [c, m]) => a + (isWaste(cfg, c) ? m : 0), 0) / n, freeUsedPerDay: freeUsed / n, missByHour, balance, funDone,
     closedDays: stats.filter(s => s.closed).length };
 }
 function direction(cfg, store, today) {
@@ -723,7 +747,7 @@ root.DBX = {
   overlaps, clashWith, carve, ruleClash, makeRoom, backupSlot,
   activeRules, templateFor, attachObjs, blockFrom, weekItemsFor, buildDay, getDay, planSnapshot, lockIfDue, resetDay,
   editRule, endRule, ruleLive, lanes, live, intervals, unionMin, gaps,
-  tfGoals, candidates, matches, weekDays, itemCount, balanceState, suggest, backupOffers, useBackup, fillDay, placeBlock,
+  tfGoals, tfCatId, ensureTfCats, candidates, matches, lastDone, hoursDone, funMin, weekDays, itemCount, balanceState, suggest, backupOffers, useBackup, fillDay, placeBlock,
   missedYesterday, principleChecks, actualMin, dayStats, trackedDays, rangeReport, direction, streaks,
   dayFeatures, sanyamHabits, sanyamAnalysis, mergeCloud, applyOp,
 };

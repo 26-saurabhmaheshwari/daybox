@@ -72,7 +72,7 @@ const pct = v => v == null ? null : Math.round(v * 100) + '%';
 function brief(r) {
   const h = {}; Object.entries(r.actual).forEach(([k, v]) => { h[k] = X.hrs(v); });
   return { from: r.from, to: r.to, trackedDays: r.tracked, doneHoursByCat: h, planKept: pct(r.keptPct), pillarsKept: pct(r.pillarPct), wasterPerDay: X.durTxt(r.wastePerDay), freeTimeUsedPerDay: X.durTxt(r.freeUsedPerDay), closedDays: r.closedDays,
-    skippedByHour: r.missByHour.map((n, i) => n ? X.pad(i) + ':00=' + n : null).filter(Boolean), balance: r.balance.map(b => b.cat + ' ' + pct(b.share) + ' (target ' + pct(b.target) + ')'), dreamsDone: r.dreamsDone.map(i => i.title) };
+    skippedByHour: r.missByHour.map((n, i) => n ? X.pad(i) + ':00=' + n : null).filter(Boolean), balance: r.balance.map(b => b.cat + ' ' + pct(b.share) + ' (target ' + pct(b.target) + ')'), nonGoalsDone: r.funDone.map(x => x.title + ' ' + X.durTxt(x.min)) };
 }
 
 async function pull(nDays) { console.log(JSON.stringify(await buildPull(nDays), null, 1)); }
@@ -95,7 +95,8 @@ async function buildPull(nDays) {
     templates: cfg.templates.filter(x => !x.deleted).map(x => ({ id: x.id, name: x.name, days: x.days.map(d => X.DOW[d]), version: x.version, blocks: x.blocks.slice().sort((a, b) => a.start - b.start).map(b => blk(cfg, b)) })),
     recurring: cfg.rules.filter(r => X.ruleLive(r, t)).map(r => blk(cfg, r) + ' on ' + r.days.map(d => X.DOW[d]).join('/') + (r.backup != null ? ' backup ' + X.hm(r.backup) : '') + (r.strict ? ' strict' : '')),
     regular: X.candidates(cfg, A.tf).filter(i => i.kind === 'regular').map(i => ({ title: i.title, cat: i.cat, min: i.min, perWeek: i.perWeek, doneThisWeek: X.itemCount(week, i), plannedThisWeek: X.itemCount(week, i, ['planned']), src: i.src || 'bank' })),
-    dreamsOpen: cfg.items.filter(i => i.kind === 'dream' && !i.done && !i.deleted).map(i => i.title + ' [' + i.cat + ', ' + i.min + 'm' + (i.zone !== 'any' ? ', ' + i.zone : '') + (i.needs ? ', needs ' + i.needs : '') + ']'),
+    // non goals: no targets, nothing to tick off. You pick the length and keep them balanced (least done lately first)
+    nonGoals: cfg.items.filter(i => !i.deleted && (i.kind === 'dream' || i.kind === 'fun')).map(i => { const ago = X.lastDone(S, i, t); return i.title + ' [' + (i.kind === 'dream' ? 'dream' : i.cat) + (i.kind === 'dream' ? ', ' + i.min + 'm' : '') + (i.needs ? ', needs ' + i.needs : '') + ', ' + X.durTxt(X.hoursDone(S, i)) + ' done' + (ago == null ? '' : ', last ' + ago + 'd ago') + ']'; }),
     boredomList: cfg.boredom,
     thisWeekBalance: X.balanceState(cfg, week).rows.map(r => r.cat + ' ' + pct(r.share) + ' (target ' + pct(r.target) + ')'),
     report7: brief(X.rangeReport(cfg, S, X.addDays(t, -6), t)),

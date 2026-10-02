@@ -27,6 +27,7 @@ Object.keys(localStorage).filter(k => k.startsWith(LS_DAY)).forEach(k => { const
 const STORE = { days: DAYS };
 let TF = loadTenfoldLocal();
 let INBOX = null;
+let CLOUD_OK = location.protocol === 'file:'; // never add to the config before the cloud copy has arrived (a fresh device would overwrite it)
 let AUTH = { signedIn: false };
 let SYNC = { state: 'local', msg: '' };
 let VIEW = localStorage.getItem(LS_VIEW) || 'today';
@@ -73,6 +74,7 @@ async function flush() {
 addEventListener('pagehide', flush);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
 function saveCfg() { CFG.updated = Date.now(); put(LS_CFG, CFG); markDirty('cfg'); }
+function syncTfCats() { if (CLOUD_OK && TF && X.ensureTfCats(CFG, TF).length) saveCfg(); }
 function saveDay(d, auto) {
   d.virtual = false; delete d.untracked;
   X.lockIfDue(d, today());
@@ -102,6 +104,7 @@ document.addEventListener('dbx-cloud', e => {
   if (m.pushConfig) markDirty('cfg');
   m.pushDays.forEach(markDirty);
   if (e.detail && 'inbox' in e.detail) INBOX = e.detail.inbox || null;
+  CLOUD_OK = true; syncTfCats();
   ensureToday();
   setSync('ok');
   if (!e.detail || !e.detail.live || m.changed) { if (DRAGGING) setTimeout(render, 400); else render(); }
@@ -117,7 +120,7 @@ document.addEventListener('dbx-ask', e => {
   if (VIEW === 'today') render();
 });
 document.addEventListener('dbx-watcher', e => { const was = saAlive(); WATCH = e.detail || null; if (was !== saAlive() && VIEW === 'today') render(); });
-document.addEventListener('dbx-tenfold', e => { TF = e.detail; if (['bank', 'insights', 'today'].includes(VIEW)) render(); });
+document.addEventListener('dbx-tenfold', e => { TF = e.detail; syncTfCats(); if (['bank', 'insights', 'today'].includes(VIEW)) render(); });
 document.addEventListener('dbx-sync-error', e => { setSync('err', e.detail); toast(String(e.detail), null, null, 9000); });
 
 /* ---------- icons ---------- */
@@ -863,28 +866,38 @@ function itemMeta(it) {
   return esc(c.name) + ' · ' + durTxt(it.min || 30) + (it.kind === 'regular' ? ' · ' + (it.perWeek || 3) + 'x/week' : '') + ' · ' + (it.energy === 'deep' ? 'deep focus' : 'light') + (it.zone && it.zone !== 'any' ? ' · ' + it.zone : '') + (it.needs ? ' · needs ' + esc(it.needs) : '');
 }
 function viewBank() {
-  const tab = TAB.bank, t = today();
+  const tab = ['goals', 'nongoals', 'balance', 'boredom'].includes(TAB.bank) ? TAB.bank : 'goals', t = today();
   const days = X.weekDays(STORE, CFG, t, t);
-  const tabs = [['regular', 'Regular'], ['dreams', 'Dream list'], ['tenfold', 'Tenfold goals'], ['balance', 'Balance'], ['boredom', 'Boredom list']];
+  syncTfCats();
+  const tabs = [['goals', 'Goals'], ['nongoals', 'Non goals'], ['balance', 'Balance'], ['boredom', 'Boredom list']];
   let body = '<div class="tabs">' + tabs.map(([k, l]) => '<button class="' + (tab === k ? 'on' : '') + '" data-act="tab" data-g="bank" data-k="' + k + '">' + l + '</button>').join('') + '</div>';
-  if (tab === 'regular' || tab === 'dreams') {
-    const kind = tab === 'regular' ? 'regular' : 'dream';
-    const list = CFG.items.filter(i => !i.deleted && i.kind === kind);
-    const open = list.filter(i => !i.done), done = list.filter(i => i.done);
-    body += '<p class="hint">' + (kind === 'regular' ? 'Things you want 3x a week (or your number). What now? and Fill free time pick the ones that are behind.' : 'Everything you dream of doing: hobbies, fun, places, people, learning. Free time gets filled from here instead of the phone, balanced by your mix.') + '</p>';
-    body += '<div class="card"><div class="list">' + (open.length ? open.map(it => {
-      const c = catOf(CFG, it.cat);
-      const right = kind === 'regular' ? '<span class="dots" style="--c:' + c.color + '">' + Array.from({ length: it.perWeek || 3 }, (_, i) => '<i class="' + (i < X.itemCount(days, it) ? 'f' : '') + '"></i>').join('') + '</span>' : '<span class="row"><button class="btn sm" data-act="planit" data-id="' + it.id + '">Plan it</button><button class="btn sm" data-act="dreamdone" data-id="' + it.id + '">' + ic('check') + 'Done</button></span>';
-      return '<div class="li" style="--c:' + c.color + '"><span class="sw"></span><div data-act="item" data-id="' + it.id + '" style="cursor:pointer"><div class="t">' + esc(it.title) + '</div><div class="m">' + itemMeta(it) + '</div></div>' + right + '</div>';
-    }).join('') : '<div class="empty">Nothing here yet.</div>') + '</div><div style="margin-top:10px"><button class="btn pri sm" data-act="item" data-kind="' + kind + '">' + ic('plus') + 'Add</button></div></div>';
-    if (done.length) body += '<div class="card"><h3>Done</h3><div class="list">' + done.map(it => '<div class="li" style="--c:' + catOf(CFG, it.cat).color + '"><span class="sw"></span><div data-act="item" data-id="' + it.id + '" style="cursor:pointer"><div class="t">' + esc(it.title) + '</div><div class="m">done ' + (it.doneAt ? fmtShort(it.doneAt) : '') + '</div></div><button class="btn sm" data-act="dreamdone" data-id="' + it.id + '">Undo</button></div>').join('') + '</div></div>';
-  } else if (tab === 'tenfold') {
+  const itemRow = (it, right) => { const c = catOf(CFG, it.cat); return '<div class="li" style="--c:' + c.color + '"><span class="sw"></span><div data-act="item" data-id="' + it.id + '" style="cursor:pointer"><div class="t">' + esc(it.title) + '</div><div class="m">' + itemMeta(it) + '</div></div>' + right + '</div>'; };
+  const addBtn = (kind, cat) => '<div style="margin-top:10px"><button class="btn pri sm" data-act="item" data-kind="' + kind + '"' + (cat ? ' data-cat="' + cat + '"' : '') + '>' + ic('plus') + 'Add</button></div>';
+  const items = kind => CFG.items.filter(i => !i.deleted && i.kind === kind);
+  if (tab === 'goals') {
+    const reg = items('regular');
+    body += '<div class="card"><h3>Regular</h3><p class="hint">Things you want 3x a week (or your number). What now? and Fill free time pick the ones that are behind.</p><div class="list">'
+      + (reg.length ? reg.map(it => { const c = catOf(CFG, it.cat); return itemRow(it, '<span class="dots" style="--c:' + c.color + '">' + Array.from({ length: it.perWeek || 3 }, (_, i) => '<i class="' + (i < X.itemCount(days, it) ? 'f' : '') + '"></i>').join('') + '</span>'); }).join('') : '<div class="empty">Nothing here yet.</div>')
+      + '</div>' + addBtn('regular') + '</div>';
     const gs = X.tfGoals(CFG, TF);
-    body += '<p class="hint">Read-only from Tenfold. DayBox never writes to Tenfold. Turn a goal on and it competes for free slots, balanced against hobbies and fun.</p>'
-      + '<label class="check" style="margin-bottom:12px"><input type="checkbox" id="tfOn"' + (CFG.tf.on ? ' checked' : '') + '> Use Tenfold goals in suggestions</label>';
+    body += '<div class="card"><h3>Tenfold live nuggets</h3><p class="hint">Read-only from Tenfold. Each nugget sits in the category with the same name as its Tenfold category.</p>'
+      + '<label class="check" style="margin-bottom:12px"><input type="checkbox" id="tfOn"' + (CFG.tf.on ? ' checked' : '') + '> Use them in suggestions</label>';
     if (!TF) body += '<div class="empty">No Tenfold data found. Sign in with the same Google account as Tenfold, or open DayBox in the same browser where you use Tenfold.</div>';
     else if (!gs.length) body += '<div class="empty">No live nugget minis in Tenfold. Make a mini a Live nugget there and it shows here.</div>';
-    else body += '<div class="card"><table class="tbl" id="tfTbl"><thead><tr><th>Goal</th><th>Use</th><th>Category</th><th>Minutes</th><th>Per week</th></tr></thead><tbody>' + gs.map(g => '<tr data-id="' + esc(g.id) + '"><td style="text-align:left"><b>' + esc(g.name) + '</b><div class="muted small">' + esc(g.secLabel) + ' · ' + esc(g.tfCat || '') + (g.target ? ' · ' + (g.cur || 0) + '/' + g.target + ' ' + esc(g.unit || '') : '') + '</div></td><td><input type="checkbox" data-f="on"' + (g.on ? ' checked' : '') + '></td><td><select data-f="cat">' + catOptions(g.cat) + '</select></td><td><input type="number" min="10" step="5" data-f="min" value="' + g.min + '" style="width:76px"></td><td><input type="number" min="1" max="14" data-f="perWeek" value="' + g.perWeek + '" style="width:64px"></td></tr>').join('') + '</tbody></table></div>';
+    else body += '<table class="tbl" id="tfTbl"><thead><tr><th>Nugget</th><th>Use</th><th>Minutes</th><th>Per week</th></tr></thead><tbody>' + gs.map(g => { const c = catOf(CFG, g.cat); return '<tr data-id="' + esc(g.id) + '"><td style="text-align:left"><b>' + esc(g.name) + '</b><div class="muted small"><span class="chip" style="--c:' + c.color + '"><i></i>' + esc(c.name) + '</span>' + (g.target ? ' ' + (g.cur || 0) + '/' + g.target + ' ' + esc(g.unit || '') : '') + '</div></td><td><input type="checkbox" data-f="on"' + (g.on ? ' checked' : '') + '></td><td><input type="number" min="10" step="5" data-f="min" value="' + g.min + '" style="width:76px"></td><td><input type="number" min="1" max="14" data-f="perWeek" value="' + g.perWeek + '" style="width:64px"></td></tr>'; }).join('') + '</tbody></table>';
+    body += '</div>';
+  } else if (tab === 'nongoals') {
+    const doneTxt = it => { const h = X.hoursDone(STORE, it), ago = X.lastDone(STORE, it, t); return (h ? durTxt(h) + ' done' : 'not done yet') + (ago == null ? '' : ' · last ' + (ago === 1 ? 'yesterday' : ago + ' days ago')); };
+    const dr = items('dream');
+    body += '<div class="card"><h3>Dreams</h3><p class="hint">Places, people, things to try. Nothing to tick off: DayBox keeps giving them time by your balance.</p><div class="list">'
+      + (dr.length ? dr.map(it => { const c = catOf(CFG, it.cat); return '<div class="li" style="--c:' + c.color + '"><span class="sw"></span><div data-act="item" data-id="' + it.id + '" style="cursor:pointer"><div class="t">' + esc(it.title) + '</div><div class="m">' + esc(c.name) + ' · ' + doneTxt(it) + '</div></div><button class="btn sm" data-act="planit" data-id="' + it.id + '">Plan it</button></div>'; }).join('') : '<div class="empty">Nothing here yet.</div>')
+      + '</div>' + addBtn('dream') + '</div>';
+    [['hobby', 'Hobbies', 'e.g. Guitar'], ['leisure', 'Leisure', 'e.g. Movie']].forEach(([cat, name, ph]) => {
+      const list = items('fun').filter(i => i.cat === cat);
+      body += '<div class="card"><h3>' + name + '</h3><p class="hint">Only the name. DayBox picks the length to fit the gap, and rotates them by your balance and what you did least lately.</p><div class="list">'
+        + (list.length ? list.map(it => '<div class="li fun" style="--c:' + catOf(CFG, cat).color + '"><span class="sw"></span><div><div class="t">' + esc(it.title) + '</div><div class="m">' + doneTxt(it) + '</div></div><button type="button" class="btn ghost sm" data-fundel="' + it.id + '" aria-label="Remove ' + esc(it.title) + '">×</button></div>').join('') : '<div class="empty">Nothing here yet.</div>')
+        + '</div><div class="row fun-add" style="margin-top:10px"><input type="text" data-funnew="' + cat + '" placeholder="' + ph + '" maxlength="40"><button type="button" class="btn pri sm" data-funadd="' + cat + '">' + ic('plus') + 'Add</button></div></div>';
+    });
   } else if (tab === 'balance') {
     const free = X.liveCats(CFG).filter(c => !X.isSleep(CFG, c.id) && !X.isWaste(CFG, c.id)), b = CFG.settings.balance;
     const sum = free.reduce((a, c) => a + (+b[c.id] || 0), 0);
@@ -903,10 +916,17 @@ function viewBank() {
       if (tb) tb.onchange = e => {
         const tr = e.target.closest('tr'); const id = tr.dataset.id, f = e.target.dataset.f;
         const g = X.tfGoals(CFG, TF).find(x => x.id === id) || {};
-        const m = CFG.tf.goalMap[id] = Object.assign({ on: g.on, cat: g.cat, min: g.min, perWeek: g.perWeek }, CFG.tf.goalMap[id] || {});
-        m[f] = f === 'on' ? e.target.checked : f === 'cat' ? e.target.value : Math.max(1, +e.target.value || 1);
+        const m = CFG.tf.goalMap[id] = Object.assign({ on: g.on, min: g.min, perWeek: g.perWeek }, CFG.tf.goalMap[id] || {});
+        delete m.cat; // the category always follows Tenfold
+        m[f] = f === 'on' ? e.target.checked : Math.max(1, +e.target.value || 1);
         saveCfg();
       };
+      $$('[data-funadd]').forEach(b => {
+        const inp = $('[data-funnew="' + b.dataset.funadd + '"]');
+        b.onclick = () => { const v = inp.value.trim(); if (!v) return inp.focus(); CFG.items.push({ id: uid(), kind: 'fun', title: v, cat: b.dataset.funadd }); saveCfg(); render(); };
+        inp.onkeydown = e => { if (e.key === 'Enter') b.click(); };
+      });
+      $$('[data-fundel]').forEach(b => { b.onclick = () => { const it = CFG.items.find(i => i.id === b.dataset.fundel); it.deleted = true; saveCfg(); render(); toast('Removed', 'Undo', () => { it.deleted = false; saveCfg(); render(); }); }; });
       $$('[data-bal]').forEach(r => {
         r.oninput = () => { $('#bv_' + r.dataset.bal).textContent = r.value + '%'; const sum = $$('[data-bal]').reduce((a, x) => a + +x.value, 0); $('#balSum').textContent = 'Total ' + sum + '% (it is scaled to 100%).'; };
         r.onchange = () => { CFG.settings.balance[r.dataset.bal] = +r.value; saveCfg(); render(); };
@@ -1035,7 +1055,7 @@ function viewInsights() {
     const hoursR = []; for (let h = 6; h < 24; h++) hoursR.push(h);
     body += '<div class="cols2" style="margin-top:14px"><div class="card"><h3>When blocks get skipped</h3><div class="heat">' + hoursR.map(h => '<div style="--v:' + (rep.missByHour[h] / mx) + '" title="' + pad(h) + ':00 · ' + rep.missByHour[h] + ' skipped">' + pad(h) + '</div>').join('') + '</div><p class="hint" style="margin:8px 0 0">Darker = more skipped blocks starting at that hour. Move hard things away from the dark hours.</p></div>'
       + '<div class="card"><h3>Streaks and wins</h3><div class="list">' + X.streaks(CFG, STORE, t).map(s => '<div class="li"><span class="chip">' + s.days + ' days</span><div class="t">' + esc(s.title) + '</div><span></span></div>').join('')
-      + '<div class="li"><span class="chip">' + rep.dreamsDone.length + '</span><div><div class="t">Dreams done</div><div class="m">' + (rep.dreamsDone.map(i => esc(i.title)).join(', ') || 'none yet in this range') + '</div></div><span></span></div></div></div></div>';
+      + '<div class="li"><span class="chip">' + durTxt(rep.funDone.reduce((a, x) => a + x.min, 0)) + '</span><div><div class="t">Dreams, hobbies, leisure</div><div class="m">' + (rep.funDone.slice(0, 6).map(x => esc(x.title) + ' ' + durTxt(x.min)).join(', ') || 'none yet in this range') + '</div></div><span></span></div></div></div></div>';
   }
   body += sanyamHtml();
   return {
@@ -1298,7 +1318,6 @@ const ACTS = {
   tab: a => { TAB[a.dataset.g] = a.dataset.k; render(); },
   item: a => openItem(a.dataset.id, a.dataset.kind),
   planit: a => planIt(a.dataset.id),
-  dreamdone: a => { const it = CFG.items.find(i => i.id === a.dataset.id); it.done = !it.done; it.doneAt = it.done ? today() : null; saveCfg(); render(); if (it.done) toast('Dream done: ' + it.title + '. Nice.'); },
   boredsave: () => { CFG.boredom = $('#boredTxt').value.split('\n').map(x => x.trim()).filter(Boolean); saveCfg(); toast('Saved'); },
   planws: a => { PLAN_WS = a.dataset.ws; render(); },
   plansave: savePlan,

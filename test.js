@@ -192,6 +192,23 @@ t('categories: add, soft delete moves rules + items, free time = has a balance s
   assert.strictEqual(X.deleteCat(m, 'leisure', 'hobby'), false); // cannot move into a deleted one
   const again = X.mergeConfig(JSON.parse(JSON.stringify(m))); assert(again.cats.find(x => x.id === 'hobby').deleted); // seed does not come back
 });
+t('nuggets sit in the category named like their Tenfold category; missing ones get added once', () => {
+  const m = X.seedConfig();
+  const tf = { goals: [{ id: 'p', name: 'Fit', cat: 'Health', sec: 'yearly' }, { id: 'a', name: 'Run', sec: 'active', parentId: 'p' }, { id: 'q', name: 'Learn', cat: 'Learning', sec: 'yearly' }, { id: 'b', name: 'Spanish', cat: 'Learning', sec: 'active', parentId: 'q' }] };
+  assert.strictEqual(X.tfGoals(m, tf).find(g => g.id === 'a').cat, 'health'); // inherits parent's Tenfold category
+  assert.strictEqual(X.ensureTfCats(m, tf).join(), 'Learning'); assert.strictEqual(X.ensureTfCats(m, tf).length, 0);
+  const lc = m.cats.find(c => c.name === 'Learning'); assert.strictEqual(X.tfGoals(m, tf).find(g => g.id === 'b').cat, lc.id);
+  X.deleteCat(m, lc.id); assert.strictEqual(X.ensureTfCats(m, tf).length, 0); // deleted stays deleted
+});
+t('hobbies/leisure: no length of their own, sized to the gap, least done lately first; dreams never done', () => {
+  const m = X.seedConfig(); m.items = [{ id: 'f1', kind: 'fun', title: 'Guitar', cat: 'hobby' }, { id: 'f2', kind: 'fun', title: 'Chess', cat: 'hobby' }, { id: 'd1', kind: 'dream', title: 'Trek', cat: 'leisure', min: 60, done: true }];
+  const st = { days: { [X.addDays(TODAY, -1)]: { date: X.addDays(TODAY, -1), blocks: [{ id: 'x', start: 600, dur: 60, title: 'Guitar', cat: 'hobby', status: 'done' }] } } };
+  const s = X.suggest(m, st, null, TODAY, { start: 600, end: 720 }, TODAY, 3);
+  const g = s.find(x => x.item.id === 'f1'), c = s.find(x => x.item.id === 'f2');
+  assert(c.score > g.score, 'chess (never done) beats guitar (yesterday)'); assert(c.min >= 20 && c.min <= 60);
+  assert(X.candidates(m, null).some(i => i.id === 'd1'));
+  assert.strictEqual(X.hoursDone(st, m.items[0]), 60);
+});
 t('my-routine.json loads', () => {
   if (!fs.existsSync(__dirname + '/my-routine.json')) return;
   const o = JSON.parse(read('my-routine.json')); const m = X.mergeConfig(o.config);
