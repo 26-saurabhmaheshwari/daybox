@@ -230,7 +230,8 @@ function fitPrompt(out, ask) {
     'DATA:\n' + JSON.stringify(out)].join('\n\n');
 }
 /* the week plan: from tomorrow to Sunday; run on a Sunday it is all of next week */
-function weekRange(t) { const from = X.addDays(t, 1); return { from, to: X.addDays(X.weekStart(from), 6) }; }
+// run before your day starts (after midnight), today is still ahead, so it is planned too
+function weekRange(t, cfg) { const nowM = new Date().getHours() * 60 + new Date().getMinutes(); const from = cfg && nowM < cfg.settings.dayStart ? t : X.addDays(t, 1); return { from, to: X.addDays(X.weekStart(from), 6) }; }
 function weekPrompt(out, r) {
   return ['You are Saarthi, the DayBox time coach. Plan the user\'s days ' + r.from + ' to ' + r.to + ' (a week plan, made the night before). The time now is in DATA.now.',
     saarthiRules(),
@@ -243,8 +244,8 @@ function weekPrompt(out, r) {
     'DATA:\n' + JSON.stringify(out)].join('\n\n');
 }
 async function planWeek(dry) {
-  const t = today(), r = weekRange(t);
-  const p = await askClaude(weekPrompt(await buildPull(14), r));
+  const t = today(), out = await buildPull(14), A0 = await loadAll(await getUid()), r = weekRange(t, A0.cfg);
+  const p = await askClaude(weekPrompt(out, r));
   p.title = 'Week plan ' + r.from.slice(5) + ' to ' + r.to.slice(5);
   (p.ops || []).forEach(o => { if (o.op && (o.op.type !== 'addBlock' || !o.op.date || o.op.date < r.from || o.op.date > r.to)) o.op = null; });
   if (!dry) {

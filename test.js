@@ -322,6 +322,14 @@ t('ideas: random order, each one once per round, never twice in a row', () => {
   for (let i = 1; i < seq.length; i++) assert.notStrictEqual(seq[i], seq[i - 1]);
   assert.notStrictEqual(seq.slice(0, 5).join(), 'A,B,C,D,E', 'not plain order'); // (a 1-in-120 chance it is)
 });
+t('ideas: "Tue: Paint" is fixed on Tuesdays, plain ones rotate on the rest', () => {
+  const r = { title: 'Kids', days: [0, 1, 2, 3, 4, 5, 6], rotate: ['Tue: Paint', 'Wednesday: Garden', 'Story', 'Play'] };
+  let k = X.weekStart(TODAY);
+  for (let i = 0; i < 14; i++, k = X.addDays(k, 1)) {
+    const v = X.ruleIdea(r, k), d = X.dow(k);
+    if (d === 2) assert.strictEqual(v, 'Paint'); else if (d === 3) assert.strictEqual(v, 'Garden'); else assert(['Story', 'Play'].includes(v), v);
+  }
+});
 t('my-routine.json loads', () => {
   if (!fs.existsSync(__dirname + '/my-routine.json')) return;
   const o = JSON.parse(read('my-routine.json')); const m = X.mergeConfig(o.config);

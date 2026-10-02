@@ -1008,7 +1008,7 @@ function openRule(id) {
     + '<div class="row"><label class="check"><input id="rPillar" type="checkbox"' + (r.pillar ? ' checked' : '') + '> Pillar (never moves)</label><label class="check"><input id="rStrict" type="checkbox"' + (r.strict ? ' checked' : '') + '> Strict, no backup</label></div>'
     + '<label class="field"><span>Backup slot, same day (pillars)</span><input id="rBackup" type="time" step="300" value="' + (r.backup != null ? hm(r.backup) : '') + '"></label>'
     + '<label class="field"><span>Small things attached (comma separated)</span><input id="rAttach" type="text" value="' + esc((r.attach || []).join(', ')) + '"></label>'
-    + '<label class="field"><span>Ideas, one a day in turn (comma separated)</span><input id="rRotate" type="text" value="' + esc((r.rotate || []).join(', ')) + '" placeholder="e.g. Story time, Draw together, Outdoor play"></label>'
+    + '<label class="field"><span>Ideas, one a day in turn (comma separated)</span><input id="rRotate" type="text" value="' + esc((r.rotate || []).join(', ')) + '" placeholder="e.g. Tue: Draw or paint, Story time, Outdoor play"></label><p class=\"hint\" style=\"margin:-6px 0 0\">\"Tue: ...\" is fixed on that day; plain ones take turns, in random order.</p>'
     + (id ? '<label class="check"><input id="rToday" type="checkbox" checked> Also change today</label>' : '')
     + '<p class="hint" style="margin:0">Applies from today on. Saved past days keep the old time.</p>'
     + '</div><div class="sh-f">' + (id ? '<button class="btn danger l" data-del>Delete</button>' : '') + '<button class="btn" data-x>Cancel</button><button class="btn pri" data-save>Save</button></div>';

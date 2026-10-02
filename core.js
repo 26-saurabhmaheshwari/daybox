@@ -341,7 +341,11 @@ function ruleClash(cfg, rule, ignoreId, today) {
 
 /* a recurring block can rotate ideas (rule.rotate): one per day, in turn, so each gets its day */
 function ruleIdea(r, date) {
-  const list = (r.rotate || []).filter(Boolean);
+  // "Tue: Draw or paint" = fixed on that weekday; plain entries take turns on the other days
+  const all = (r.rotate || []).filter(Boolean), fixedRe = /^(sun|mon|tue|wed|thu|fri|sat)[a-z]*\s*:\s*(.+)$/i;
+  const fixed = all.map(x => String(x).match(fixedRe)).filter(Boolean).find(m => DOW.findIndex(d => d.toLowerCase() === m[1].toLowerCase()) === dow(date));
+  if (fixed) return fixed[2].trim();
+  const list = all.filter(x => !fixedRe.test(String(x)));
   if (!list.length) return null;
   const n = (r.days || []).filter(d => d >= 0 && d < 7).length || 7;
   // count only the weekdays it repeats on, so a 6-day rule still walks through every idea
