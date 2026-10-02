@@ -28,3 +28,4 @@ gh auth switch --user 26-saurabhmaheshwari
 git -C D:/daybox -c credential.helper= -c credential.helper='!f() { echo username=26-saurabhmaheshwari; echo "password=$(gh auth token)"; }; f' push origin main
 gh auth switch --user surendrapatel-32co
 ```
+- Bump the `?v=N` on the core.js / app.js script tags in index.html on every deploy (GitHub Pages caches JS ~10 min).
