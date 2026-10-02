@@ -294,7 +294,7 @@ function suggest(cfg, store, tf, date, gap, today, n) {
     if (d > 0.05) { s += d * 4; why.push(catOf(cfg, it.cat).name + ' is behind your balance'); }
     if (it.zone && it.zone !== 'any') { if (it.zone === zone) { s += 1; why.push('best in the ' + zone); } else s -= 0.5; } else s += 0.3;
     if (it.energy === 'deep') { if (zone === 'morning') s += 0.8; else if (zone === 'evening') s -= 1; } else s += 0.2;
-    if (day.blocks.some(b => matches(b, it) && live(b))) s -= 2;
+    if (day.blocks.some(b => matches(b, it) && live(b))) return;  // one of each per day
     if (free >= need) s += 0.5; else why.push('short ' + fit + 'm version');
     scored.push({ item: it, score: s, min: fit, why: why.join(' · ') });
   });
@@ -323,14 +323,17 @@ function useBackup(day, blockId, at) {
 function fillDay(cfg, store, tf, date, today, nowMin) {
   const day = clone(getDay(store, cfg, date, today));
   const s = cfg.settings;
-  let from = s.dayStart;
+  // never fill before your day really starts (first planned block), nor in the past
+  const first = day.blocks.filter(b => live(b) && b.cat !== 'sleep').reduce((m, b) => Math.min(m, b.start), 1440);
+  let from = Math.max(s.dayStart, first < 1440 ? first : s.dayStart);
   if (date === today) from = Math.max(from, Math.ceil(nowMin / 15) * 15);
+  const MAX_ADD = 5;
   const gs = gaps(day.blocks, from, s.bedtime, 30);
   let budget = gs.reduce((a, g) => a + g.end - g.start, 0) * (1 - s.buffer);
   const added = [];
   for (const g of gs) {
     let cur = g.start, placed = 0;
-    while (g.end - cur >= 30 && budget >= 15 && placed < 2) {
+    while (g.end - cur >= 30 && budget >= 15 && placed < (g.end - g.start >= 120 ? 2 : 1) && added.length < MAX_ADD) {
       const tmp = { days: Object.assign({}, store.days, { [date]: day }) };
       const sug = suggest(cfg, tmp, tf, date, { start: cur, end: g.end }, today, 1)[0];
       if (!sug) break;

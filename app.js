@@ -297,7 +297,7 @@ function bindGrid(host, cols, mode, ppm, h) {
       if (!moved && Math.abs(ev.clientY - y0) < 5) return;
       moved = true;
       end = clamp(Math.round(minAt(colEl, ev.clientY) / 15) * 15, m0 + 15, s.dayEnd);
-      if (!ghost) { ghost = document.createElement('div'); ghost.className = 'ghost'; colEl.appendChild(ghost); }
+      if (!ghost) { ghost = document.createElement('div'); ghost.className = 'g-ghost'; colEl.appendChild(ghost); }
       ghost.style.top = ((m0 - s.dayStart) * ppm) + 'px'; ghost.style.height = ((end - m0) * ppm) + 'px'; ghost.textContent = hm(m0) + '–' + hm(end);
     };
     const up = () => { off(); if (ghost) ghost.remove(); h.onNew(c, m0, moved ? end - m0 : 30); };
