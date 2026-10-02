@@ -915,15 +915,16 @@ function viewSaarthi() {
     body += '<div class="card inbox" style="margin-top:14px"><div class="row" style="margin-bottom:8px"><h3 style="margin:0">' + esc(INBOX.title || 'Suggestions') + '</h3><span class="muted small">' + (INBOX.at ? new Date(INBOX.at).toLocaleString() : '') + '</span>' + (pendingOps() > 1 ? '<button class="btn sm pri" data-act="opall" style="margin-left:auto">Accept all</button>' : '') + '</div>'
       + (INBOX.summary ? '<p style="margin:0 0 10px">' + esc(INBOX.summary) + '</p>' : '')
       + (INBOX.tips && INBOX.tips.length ? '<ul style="margin:0 0 12px;padding-left:18px">' + INBOX.tips.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '')
-      + INBOX.ops.map((o, i) => '<div class="op"><div><b>' + (i + 1) + '. ' + esc(opLabel(o)) + '</b>' + (o.why ? '<div class="muted small">' + esc(o.why) + '</div>' : '') + '</div><div class="row">' + (o.state === 'pending' ? '<button class="btn sm" data-act="oprej" data-i="' + i + '">Reject</button><button class="btn sm pri" data-act="opacc" data-i="' + i + '">Accept</button>' : '<span class="chip">' + esc(o.state) + '</span>') + '</div></div>').join('') + '</div>';
+      + INBOX.ops.map((o, i) => '<div class="op"><div><b>' + (i + 1) + '. ' + esc(opLabel(o)) + '</b>' + (o.why ? '<div class="muted small">' + esc(o.why) + '</div>' : '') + '</div><div class="row">' + (o.state === 'pending' || o.state === 'failed' ? (o.state === 'failed' ? '<span class="chip">failed</span>' : '') + '<button class="btn sm" data-act="oprej" data-i="' + i + '">Reject</button><button class="btn sm pri" data-act="opacc" data-i="' + i + '">Accept</button>' : '<span class="chip">' + esc(o.state) + '</span>') + '</div></div>').join('') + '</div>';
   }
   return { title: 'Saarthi', sub: 'your guide, you decide', body };
 }
 async function decideOp(i, accept) {
-  const o = INBOX.ops[i]; if (!o || o.state !== 'pending') return;
+  const o = INBOX.ops[i]; if (!o || (o.state !== 'pending' && o.state !== 'failed')) return;
   if (accept) {
     const beforeCfg = clone(CFG);
     const res = X.applyOp(CFG, STORE, o.op, today());
+    if (res.error && /^unknown op/.test(res.error)) { toast('This needs the newest DayBox. Reload the page, then tap Accept again.', 'Reload', () => location.reload(), 12000); return; }
     if (res.error) { o.state = 'failed'; toast('Could not apply: ' + res.error); }
     else {
       try { await DBXFB.pushHistory(String(Date.now()), fsSafe({ at: Date.now(), by: 'app', op: o.op, path: res.day ? 'days/' + res.day.date : 'meta/config', before: res.day ? (DAYS[res.day.date] || null) : beforeCfg })); } catch (e) {}
