@@ -76,7 +76,7 @@ t('suggest picks behind regular items and diverse cats', () => {
 t('suggest respects gap length', () => { const s = X.suggest(cfg, store, null, TODAY, { start: 600, end: 620 }, TODAY, 3); assert(s.every(x => x.min <= 20)); assert(!s.some(x => x.item.title === 'Visit a new place')); });
 t('tenfold goals join candidates (read-only shape)', () => {
   const tf = { goals: [{ id: 'p', name: 'Get fit', cat: 'Health', sec: 'active' }, { id: 'g1', name: 'Run 5k', cat: 'Health', sec: 'active', parentId: 'p' }, { id: 'g2', name: 'Old', sec: 'someday' },
-    { id: 'g3', name: 'Gone', sec: 'active', deleted: true, parentId: 'p' }, { id: 'g4', name: 'Swim', sec: 'yearly', parentId: 'p', done: true }] };
+    { id: 'g3', name: 'Gone', sec: 'active', deleted: true, parentId: 'p' }, { id: 'g4', name: 'Swim', sec: 'active', parentId: 'p', done: true }, { id: 'g5', name: 'Later', sec: 'yearly', parentId: 'p' }] };
   const gs = X.tfGoals(cfg, tf); assert.strictEqual(gs.length, 1, 'only open minis'); assert.strictEqual(gs[0].cat, 'health');
   assert(X.candidates(cfg, tf).some(c => c.id === 'tf:g1'));
 });

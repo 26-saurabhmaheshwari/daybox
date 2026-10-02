@@ -340,12 +340,12 @@ function gaps(blocks, from, to, minLen) {
 function tfGoals(cfg, tf) {
   if (!tf || !Array.isArray(tf.goals)) return [];
   const SEC = { active: 'Live nugget', progress: 'This quarter', yearly: 'Yearly' };
-  // only minis (goals carved out of a parent goal): they are the small, bookable pieces
-  return tf.goals.filter(g => g && g.parentId && !g.deleted && !g.done).map(g => {
+  // only live-nugget minis (goals carved out of a parent goal): the small pieces you are on now
+  return tf.goals.filter(g => g && g.parentId && g.sec === 'active' && !g.deleted && !g.done).map(g => {
     const txt = (g.cat || '') + ' ' + (g.name || '');
     const guess = /health|fit|exercise|yoga|run|gym|walk|weight/i.test(txt) ? 'health' : /hobby|music|art|creat|paint|guitar|sing|draw|sketch/i.test(txt) ? 'hobby' : /family|kid|wife|parent/i.test(txt) ? 'family' : 'goal';
     const m = (cfg.tf.goalMap || {})[g.id] || {};
-    return { id: g.id, name: g.name, tfCat: g.cat, sec: g.sec, secLabel: SEC[g.sec] || 'Someday', cur: g.cur, target: g.target, unit: g.unit,
+    return { id: g.id, name: g.name, tfCat: g.cat, sec: g.sec, secLabel: SEC[g.sec], cur: g.cur, target: g.target, unit: g.unit,
       on: m.on == null ? g.sec === 'active' : !!m.on, cat: m.cat || guess, min: m.min || 45, perWeek: m.perWeek || 3 };
   });
 }
