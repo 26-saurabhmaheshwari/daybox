@@ -582,10 +582,9 @@ function segHtml(b, sg, main, c, extra) {
   const marked = isMarked(b), doneLock = marked && !UNLOCKED.has(b.id);
   const cls = ['seg', 'st-' + (b.status || 'planned'), sg.first ? 'first' : '', sg.last ? 'last' : '', b.pillar ? 'pillar' : '', doneLock ? 'done-lock' : '', extra || ''].join(' ');
   let inner = '';
-  if (main) {
-    inner += '<span class="sg-t">' + (b.status === 'done' ? '<span class="ok">✓</span>' : '') + (b.pillar ? ic('lock', 's-ic') : '') + (b.mit ? '<span class="mit">★</span>' : '') + esc(b.title) + '</span>';
-    if (sg.min >= 25) inner += '<span class="sg-m">' + hm(b.start) + '–' + hm(b.start + b.dur) + '</span>';
-  }
+  // every piece of a block that wraps across hours carries its name; the time sits on the main piece
+  inner += '<span class="sg-t' + (sg.first ? '' : ' cont') + '">' + (sg.first ? '' : '↳ ') + (b.status === 'done' ? '<span class="ok">✓</span>' : '') + (b.pillar && sg.first ? ic('lock', 's-ic') : '') + (b.mit && sg.first ? '<span class="mit">★</span>' : '') + esc(b.title) + '</span>';
+  if (main && sg.min >= 25) inner += '<span class="sg-m">' + hm(b.start) + '–' + hm(b.start + b.dur) + '</span>';
   if (needs && sg.last) inner += '<i class="sg-q" title="How did it go?"></i>';
   if (marked && sg.last) inner += doneLock ? '<button type="button" class="sg-unlock" title="Unlock to change" aria-label="Unlock to change">' + ic('lock') + '</button>' : '<span class="sg-unlock on" title="Unlocked for one change">' + ic('unlock') + '</span>';
   if (sg.last && !b.pillar && !doneLock && c.editable) inner += '<i class="sg-rz" title="Drag to change the length"></i>';
