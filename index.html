@@ -203,16 +203,24 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 .qbtns{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 /* ---------- Today: morning / afternoon / evening ---------- */
 .parts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
-.part{border:1px solid var(--line);border-radius:16px;padding:12px 12px 10px;background:var(--surface)}
+/* each card is a little landscape: sky + sun/moon + hills in the header, the hill colour tints the body */
+.part{border:1px solid var(--line);border-radius:18px;padding:12px 12px 10px;overflow:hidden;background:linear-gradient(180deg,color-mix(in srgb,var(--pt) 16%,var(--surface)) 0%,var(--surface) 75%)}
 .part.now{border-color:color-mix(in srgb,var(--accent) 45%,var(--line));box-shadow:0 0 0 3px var(--accent-soft)}
-.pt-h{display:flex;align-items:baseline;justify-content:space-between;margin:0 2px 10px}
-.pt-h b{font-size:.95rem;display:flex;align-items:center;gap:7px}
-.pt-h b::before{content:'';width:9px;height:9px;border-radius:50%;background:var(--pt)}
-.part.am{--pt:#E6A100}.part.pm{--pt:#2F7BF5}.part.ev{--pt:#7B68EE}
-.pt-h span{font-size:.7rem;font-weight:700;color:var(--faint)}
+.pt-h{display:flex;align-items:flex-start;justify-content:space-between;height:86px;margin:-12px -12px 10px;padding:11px 14px;color:var(--pt-ink);background:var(--scene) center bottom/cover no-repeat,var(--sky)}
+.pt-h b{font-size:1rem;letter-spacing:-.01em}
+.pt-h span{font-size:.7rem;font-weight:700;opacity:.8}
+.part.am{--pt:#2F9446;--pt-ink:#17402A;--sky:linear-gradient(180deg,#BEE3F5 0%,#E9F5DF 100%);
+  --scene:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 86' preserveAspectRatio='xMidYMax slice'%3E%3Ccircle cx='150' cy='46' r='26' fill='%23FFFBE0' opacity='.5'/%3E%3Ccircle cx='150' cy='46' r='15' fill='%23FFFDF0'/%3E%3Cpath d='M0 58 Q70 40 150 54 T300 48 V86 H0Z' fill='%23A8D96F'/%3E%3Cpath d='M0 72 Q80 60 160 70 T300 66 V86 H0Z' fill='%236BBE4A'/%3E%3Cpath d='M172 86 C170 68 188 56 206 62 C214 46 248 44 258 60 C280 56 298 66 300 86Z' fill='%232F9446'/%3E%3C/svg%3E")}
+.part.pm{--pt:#B5584A;--pt-ink:#5B2320;--sky:linear-gradient(180deg,#F6B095 0%,#FCDCC6 100%);
+  --scene:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 86' preserveAspectRatio='xMidYMax slice'%3E%3Ccircle cx='150' cy='50' r='28' fill='%23FFE9DA' opacity='.55'/%3E%3Ccircle cx='150' cy='50' r='16' fill='%23FFF3EA'/%3E%3Cpath d='M96 30 h34 a6 6 0 0 0 0-8 h-28 a5 5 0 0 0 -6 8Z' fill='%23FFE3D3' opacity='.8'/%3E%3Cpath d='M0 60 Q70 44 150 56 T300 50 V86 H0Z' fill='%23DE8A70'/%3E%3Cpath d='M0 72 Q80 62 160 71 T300 67 V86 H0Z' fill='%23B5584A'/%3E%3Cpath d='M172 86 C170 68 188 56 206 62 C214 46 248 44 258 60 C280 56 298 66 300 86Z' fill='%238E3B37'/%3E%3C/svg%3E")}
+.part.ev{--pt:#5B3F8E;--pt-ink:#FFFFFF;--sky:linear-gradient(180deg,#2E2C63 0%,#6A5AA6 100%);
+  --scene:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 86' preserveAspectRatio='xMidYMax slice'%3E%3Cmask id='m'%3E%3Ccircle cx='152' cy='32' r='12' fill='white'/%3E%3Ccircle cx='159' cy='27' r='11' fill='black'/%3E%3C/mask%3E%3Ccircle cx='152' cy='32' r='12' fill='%23FFF3C4' mask='url(%23m)'/%3E%3Cg fill='white' opacity='.85'%3E%3Ccircle cx='100' cy='18' r='1.2'/%3E%3Ccircle cx='122' cy='40' r='1'/%3E%3Ccircle cx='190' cy='16' r='1.3'/%3E%3Ccircle cx='212' cy='38' r='1'/%3E%3Ccircle cx='70' cy='36' r='1'/%3E%3Ccircle cx='240' cy='24' r='1.1'/%3E%3C/g%3E%3Cpath d='M0 60 Q70 46 150 57 T300 52 V86 H0Z' fill='%237E6AAE'/%3E%3Cpath d='M0 72 Q80 62 160 71 T300 67 V86 H0Z' fill='%235B3F8E'/%3E%3Cpath d='M172 86 C170 68 188 56 206 62 C214 46 248 44 258 60 C280 56 298 66 300 86Z' fill='%233E2A66'/%3E%3C/svg%3E")}
+.part.ev .pt-h{text-shadow:0 1px 2px rgba(0,0,0,.3)}
 .pt-g{display:grid;grid-template-columns:24px repeat(2,minmax(0,1fr));gap:5px}
-.pt-g .ck-c{height:clamp(34px,calc((100vh - 330px) / 7),50px);border-radius:9px;padding:0 9px;font-size:.78rem}
-.pt-g .ck-r{font-size:.78rem;padding-right:6px}
+.pt-g .ck-c{height:clamp(34px,calc((100vh - 400px) / 7),50px);border-radius:9px;padding:0 9px;font-size:.78rem}
+.pt-g .ck-c.empty{background:color-mix(in srgb,var(--pt) 9%,var(--surface));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--pt) 14%,transparent)}
+.pt-g .ck-c.empty:hover,.pt-g .ck-c.empty.now,.pt-g .ck-c.over{background:var(--accent-soft)}
+.pt-g .ck-r{font-size:.78rem;padding-right:6px;color:color-mix(in srgb,var(--pt) 55%,var(--faint))}
 .pt-g .ck-h{font-size:.66rem;padding-bottom:3px}
 @media (max-width:900px){.parts{grid-template-columns:minmax(0,1fr)}}
 /* To fit: full-width card under the day, tasks flow in columns */
@@ -509,7 +517,7 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 <div id="ov" hidden><div id="sheet" role="dialog" aria-modal="true"></div></div>
 <div id="toast" hidden></div>
 <div id="printArea"></div>
-<script src="core.js?v=38"></script>
-<script src="app.js?v=38"></script>
+<script src="core.js?v=39"></script>
+<script src="app.js?v=39"></script>
 </body>
 </html>
