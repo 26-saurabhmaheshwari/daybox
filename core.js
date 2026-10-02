@@ -23,18 +23,20 @@ const zoneOf = m => m < 720 ? 'morning' : m < 1020 ? 'afternoon' : 'evening';
 
 /* ---------- seeds (neutral: the repo is public; your real routine lives in my-routine.json) ---------- */
 const SEED_CATS = [
-  { id: 'pillar',  name: 'Pillar',  color: '#E08A1E', group: 'fixed' },
-  { id: 'office',  name: 'Office',  color: '#3D6B99', group: 'fixed' },
-  { id: 'admin',   name: 'Admin',   color: '#7F8791', group: 'fixed' },
-  { id: 'family',  name: 'Family',  color: '#2F9A62', group: 'free' },
-  { id: 'goal',    name: 'Goal',    color: '#6C4FD0', group: 'free' },
-  { id: 'hobby',   name: 'Hobby',   color: '#D4497A', group: 'free' },
-  { id: 'leisure', name: 'Leisure', color: '#1C9DB0', group: 'free' },
-  { id: 'health',  name: 'Health',  color: '#8AA12A', group: 'free' },
-  { id: 'self',    name: 'Self',    color: '#A0629E', group: 'self' },
-  { id: 'sleep',   name: 'Sleep',   color: '#4B5876', group: 'sleep' },
-  { id: 'waster',  name: 'Waster',  color: '#C7372F', group: 'waste' },
+  { id: 'pillar',  name: 'Pillar',  color: '#B4235A', group: 'fixed' },  // maroon: spirituality
+  { id: 'office',  name: 'Office',  color: '#3B7BE8', group: 'fixed' },  // blue: trust, focus
+  { id: 'admin',   name: 'Admin',   color: '#6B7A8F', group: 'fixed' },  // grey: business
+  { id: 'family',  name: 'Family',  color: '#F08A24', group: 'free' },   // orange: warmth
+  { id: 'goal',    name: 'Goal',    color: '#7C5CFA', group: 'free' },   // violet: ambition
+  { id: 'hobby',   name: 'Hobby',   color: '#E3A008', group: 'free' },   // amber: joy
+  { id: 'leisure', name: 'Leisure', color: '#0EA5C6', group: 'free' },   // cyan: calm
+  { id: 'health',  name: 'Health',  color: '#22A55B', group: 'free' },   // green: nature
+  { id: 'self',    name: 'Self',    color: '#E0559B', group: 'self' },   // pink: care
+  { id: 'sleep',   name: 'Sleep',   color: '#55627A', group: 'sleep' },  // slate
+  { id: 'waster',  name: 'Waster',  color: '#E5484D', group: 'waste' },  // red: warning
 ];
+// colours the first version shipped with; a category still on one of these gets the new palette
+const OLD_SEED_COLORS = { pillar: '#E08A1E', office: '#3D6B99', admin: '#7F8791', family: '#2F9A62', goal: '#6C4FD0', hobby: '#D4497A', leisure: '#1C9DB0', health: '#8AA12A', self: '#A0629E', sleep: '#4B5876', waster: '#C7372F' };
 const SHUTDOWN = ["Tomorrow's MIT written", 'Laptop closed', 'Phone on alerts only'];
 const T = (start, dur, title, cat, x) => Object.assign({ id: uid(), start, dur, title, cat, attach: [] }, x || {});
 function seedConfig() {
@@ -102,6 +104,7 @@ function mergeConfig(saved) {
   const ids = new Set((out.cats || []).map(c => c.id));
   out.cats = (out.cats || []).slice();
   s.cats.forEach(c => { if (!ids.has(c.id)) out.cats.push(c); });
+  out.cats = out.cats.map(c => OLD_SEED_COLORS[c.id] && String(c.color).toUpperCase() === OLD_SEED_COLORS[c.id] ? Object.assign({}, c, { color: s.cats.find(x => x.id === c.id).color }) : c);
   ['templates', 'rules', 'items', 'boredom'].forEach(k => { if (!Array.isArray(out[k])) out[k] = s[k]; });
   migrateTemplates(out);
   return out;

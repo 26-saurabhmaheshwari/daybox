@@ -175,6 +175,10 @@ t('ops refuse overlaps', () => {
   const off = X.backupOffers(d, 700).find(o => o.block === mp); assert.strictEqual(off.at, 1230);
   X.useBackup(d, mp.id, off.at); assert(!noOverlap(d), noOverlap(d));
 });
+t('old seed colours move to the new palette, custom ones stay', () => {
+  const m = X.mergeConfig({ cats: [{ id: 'goal', name: 'Goal', color: '#6C4FD0', group: 'free' }, { id: 'office', name: 'Office', color: '#123456', group: 'fixed' }] });
+  assert.strictEqual(m.cats.find(c => c.id === 'goal').color, '#7C5CFA'); assert.strictEqual(m.cats.find(c => c.id === 'office').color, '#123456');
+});
 t('my-routine.json loads', () => {
   if (!fs.existsSync(__dirname + '/my-routine.json')) return;
   const o = JSON.parse(read('my-routine.json')); const m = X.mergeConfig(o.config);

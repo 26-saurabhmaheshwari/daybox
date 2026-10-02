@@ -610,11 +610,12 @@ function bindDayGrid(host, c, h) {
   const minuteAt = (x, y) => {
     for (const tr of $$('.dg-track', host)) {
       const r = tr.getBoundingClientRect();
-      if (y >= r.top - 1 && y <= r.bottom + 1 && x >= r.left - 60 && x <= r.right + 8) return +tr.parentNode.dataset.h * 60 + clamp((x - r.left) / r.width, 0, 1) * 60;
+      if (y >= r.top - 1 && y <= r.bottom + 1) return +tr.parentNode.dataset.h * 60 + clamp((x - r.left) / r.width, 0, 1) * 60;
     }
     return null;
   };
   host._minuteAt = minuteAt;
+  host._ghost = (start, dur) => { segEls('_drop').forEach(x => x.remove()); if (start != null) paint({ id: '_drop', start, dur, title: '', cat: 'goal', status: 'planned' }, 'drop' + (X.clashWith(c.blocks, { start, dur }) ? ' clash' : '')); };
   const segEls = id => $$('.seg[data-id="' + id + '"]', host);
   const paint = (b, extra) => {
     segEls(b.id).forEach(x => x.remove());
@@ -690,6 +691,14 @@ const blockOf = (d, x) => x.placed ? d.blocks.find(b => b.id === x.placed) : nul
 let SUGS = [];
 const FIT_MAX = 5;  // your tasks + Saarthi suggestions, never more than 5 a day
 function fitFrom(d) { const s = CFG.settings, t = today(); return d.date === t ? Math.max(s.dayStart, Math.ceil(nowMin() / 15) * 15) : s.dayStart; }
+const durChip = m => Math.floor(m / 60) + ':' + pad(m % 60);
+function taskCard(o) {
+  // o: {cls, drag, label, c, title, meta, dur, chk, right}
+  return '<div class="tcard ' + (o.cls || '') + (o.drag ? ' drag' : '') + '" style="--c:' + o.c.color + '"' + (o.drag ? ' data-drag="' + o.drag + '" data-label="' + esc(o.label) + '"' : '') + '>'
+    + (o.chk || '<span class="tc-dot"></span>')
+    + '<div class="tc-main"><div class="tc-t">' + esc(o.title) + '</div><div class="tc-meta"><span class="tag">#' + esc(o.c.name.toLowerCase()) + '</span>' + (o.meta || '') + '</div></div>'
+    + (o.dur ? '<span class="tc-dur">' + durChip(o.dur) + '</span>' : '<span></span>') + (o.right || '') + '</div>';
+}
 function fitHtml(d) {
   const t = today(), s = CFG.settings;
   if (d.date < t || d.untracked) return '';
@@ -699,19 +708,19 @@ function fitHtml(d) {
   const todos = d.todo || [];
   const open = todos.filter(x => !x.done && !blockOf(d, x));
   const needMin = open.reduce((a, x) => a + (x.min || 30), 0);
-  let h = '<div class="ag fit"><div class="ag-h"><span>To fit ' + (d.date === t ? 'today' : fmtShort(d.date)) + ' <b class="cnt">' + Math.min(FIT_MAX, todos.length) + '/' + FIT_MAX + '</b></span><span>' + durTxt(freeMin) + ' free</span></div>';
-  if (needMin > freeMin * (1 - s.buffer) && open.length) h += '<div class="al warn" style="margin:8px 12px">' + durTxt(needMin) + ' to fit but only ' + durTxt(freeMin) + ' free. Pick what matters, move the rest to another day.</div>';
+  let h = '<div class="fitbox"><div class="fb-h"><div><h3>To fit ' + (d.date === t ? 'today' : fmtShort(d.date)) + '</h3><span class="fb-sub">' + Math.min(FIT_MAX, todos.length) + ' of ' + FIT_MAX + ' · ' + durTxt(freeMin) + ' free</span></div></div>';
+  if (needMin > freeMin * (1 - s.buffer) && open.length) h += '<div class="fb-warn">' + durTxt(needMin) + ' to fit, only ' + durTxt(freeMin) + ' free. Keep what matters.</div>';
   h += todos.map(x => {
     const b = blockOf(d, x), done = x.done || (b && b.status === 'done'), c = catOf(CFG, x.cat);
-    return '<div class="fit-row ' + (done ? 'done' : '') + (b || done ? '' : ' drag') + '" style="--c:' + c.color + '"' + (b || done ? '' : ' data-drag="todo:' + x.id + '" data-label="' + esc(x.title) + '"') + '><button type="button" class="fit-chk" data-act="fitdone" data-id="' + x.id + '" aria-label="Mark done">' + (done ? '✓' : '') + '</button>'
-      + '<div class="ag-main"><div class="ag-title"><span>' + esc(x.title) + '</span></div><div class="ag-meta">' + durTxt(x.min || 30) + ' · ' + esc(c.name) + (b ? ' · at ' + hm(b.start) : '') + (x.by === 'saarthi' ? ' · from Saarthi' : '') + '</div></div>'
-      + '<button type="button" class="ag-lock" data-act="fitdel" data-id="' + x.id + '" aria-label="Remove">×</button></div>';
+    return taskCard({ cls: done ? 'done' : b ? 'placed' : '', drag: b || done ? '' : 'todo:' + x.id, label: x.title, c, title: x.title, dur: x.min || 30,
+      chk: '<button type="button" class="tc-chk" data-act="fitdone" data-id="' + x.id + '" aria-label="Mark done">' + (done ? ic('check') : '') + '</button>',
+      meta: (b ? '<span>' + hm(b.start) + '</span>' : '') + (x.by === 'saarthi' ? '<span>Saarthi</span>' : ''),
+      right: '<button type="button" class="tc-x" data-act="fitdel" data-id="' + x.id + '" aria-label="Remove">×</button>' });
   }).join('');
-  if (todos.length >= FIT_MAX) h += '<div class="fit-full">' + FIT_MAX + ' for today. Tick one done or remove one to add another.</div>';
-  else h += '<div class="fit-add"><input id="fitTitle" type="text" placeholder="Add a task to fit ' + (d.date === t ? 'today' : 'this day') + '" autocomplete="off" list="bTitles"><datalist id="bTitles">' + titleList() + '</datalist>'
-    + '<select id="fitMin" aria-label="Length">' + [15, 20, 30, 45, 60, 90, 120, 180].map(m => '<option value="' + m + '"' + (m === 30 ? ' selected' : '') + '>' + durTxt(m) + '</option>').join('') + '</select>'
+  if (todos.length >= FIT_MAX) h += '<div class="fb-note">' + FIT_MAX + ' for today. Tick one done or remove one to add another.</div>';
+  else h += '<div class="tc-add"><span class="tc-plus">' + ic('plus') + '</span><input id="fitTitle" type="text" placeholder="Add a task" autocomplete="off" list="bTitles"><datalist id="bTitles">' + titleList() + '</datalist>'
+    + '<select id="fitMin" aria-label="Length">' + [15, 20, 30, 45, 60, 90, 120, 180].map(m => '<option value="' + m + '"' + (m === 30 ? ' selected' : '') + '>' + durChip(m) + '</option>').join('') + '</select>'
     + '<select id="fitCat" aria-label="Category">' + catOptions('office') + '</select><button type="button" class="btn sm pri" data-act="fitadd">Add</button></div>';
-  // suggestions: Saarthi ops for this day + bank picks for the biggest free slot
   const ops = (INBOX && INBOX.ops || []).map((o, i) => ({ o, i })).filter(({ o }) => (o.state === 'pending' || o.state === 'failed') && o.op && (o.op.date === d.date || (!o.op.date && d.date === t)));
   const big = gs.filter(g => g.end - g.start >= 30).sort((a, b) => (b.end - b.start) - (a.end - a.start))[0];
   const hide = d.sugHide || [];
@@ -720,11 +729,16 @@ function fitHtml(d) {
   const titles = new Set(todos.map(x => norm(x.title)));
   SUGS = big && slots > opsShown.length ? X.suggest(CFG, STORE, TF, d.date, big, t, 8).filter(x => !hide.includes(x.item.id) && !titles.has(norm(x.item.title))).slice(0, slots - opsShown.length).map(x => Object.assign(x, { gap: big })) : [];
   if (opsShown.length || SUGS.length) {
-    h += '<div class="fit-sub">Saarthi suggests</div>';
-    h += opsShown.map(({ o, i }) => '<div class="fit-row sug' + (o.op.type === 'addBlock' ? ' drag" data-drag="op:' + i + '" data-label="' + esc(o.op.block.title) : '') + '"><span class="ag-dot" style="--c:var(--accent)"></span><div class="ag-main"><div class="ag-title"><span>' + esc(o.label) + '</span></div><div class="ag-meta">Saarthi' + (o.why ? ' · ' + esc(o.why) : '') + '</div></div><button type="button" class="btn sm pri" data-act="opfit" data-i="' + i + '">Accept</button><button type="button" class="ag-lock" data-act="oprej" data-i="' + i + '" aria-label="Reject">×</button></div>').join('');
-    h += SUGS.map((sg, i) => { const c = catOf(CFG, sg.item.cat); return '<div class="fit-row sug drag" style="--c:' + c.color + '" data-drag="sug:' + i + '" data-label="' + esc(sg.item.title) + '"><span class="ag-dot"></span><div class="ag-main"><div class="ag-title"><span>' + esc(sg.item.title) + '</span></div><div class="ag-meta">' + durTxt(sg.min) + ' at ' + hm(sg.gap.start) + ' · ' + esc(sg.why) + '</div></div><button type="button" class="btn sm" data-act="sugacc" data-i="' + i + '">Accept</button><button type="button" class="ag-lock" data-act="sughide" data-id="' + esc(sg.item.id) + '" aria-label="Not today">×</button></div>'; }).join('');
+    h += '<div class="fb-sec">' + ic('saarthi', 's-ic') + 'Saarthi suggests</div>';
+    h += opsShown.map(({ o, i }) => { const isB = o.op.type === 'addBlock'; const c = catOf(CFG, isB ? o.op.block.cat : 'goal');
+      return taskCard({ cls: 'sug', drag: isB ? 'op:' + i : '', label: isB ? o.op.block.title : o.label, c, title: isB ? o.op.block.title : o.label, dur: isB ? o.op.block.dur || 30 : 0,
+        meta: o.why ? '<span class="why">' + esc(o.why) + '</span>' : '',
+        right: '<button type="button" class="btn sm" data-act="opfit" data-i="' + i + '">Accept</button><button type="button" class="tc-x" data-act="oprej" data-i="' + i + '" aria-label="Reject">×</button>' }); }).join('');
+    h += SUGS.map((sg, i) => taskCard({ cls: 'sug', drag: 'sug:' + i, label: sg.item.title, c: catOf(CFG, sg.item.cat), title: sg.item.title, dur: sg.min,
+      meta: '<span class="why">' + esc(sg.why) + '</span>',
+      right: '<button type="button" class="btn sm" data-act="sugacc" data-i="' + i + '">Accept</button><button type="button" class="tc-x" data-act="sughide" data-id="' + esc(sg.item.id) + '" aria-label="Not today">×</button>' })).join('');
   }
-  if (todos.some(x => !x.done && !blockOf(d, x)) || SUGS.length || opsShown.length) h += '<div class="fit-hint">Drag a task onto the calendar to place it.</div>';
+  if (todos.some(x => !x.done && !blockOf(d, x)) || SUGS.length || opsShown.length) h += '<div class="fb-note">Drag a card onto the calendar to give it a time.</div>';
   return h + '</div>';
 }
 function fitAdd() {
@@ -776,7 +790,7 @@ function openPlace(key, start) {
   });
 }
 function bindFitDrag() {
-  const box = $('.ag.fit'), grid = $('#dayGrid'); if (!box || !grid) return;
+  const box = $('.fitbox'), grid = $('#dayGrid'); if (!box || !grid) return;
   box.onpointerdown = e => {
     const row = e.target.closest('[data-drag]');
     if (!row || e.button > 0 || e.target.closest('button,input,select')) return;
@@ -796,6 +810,8 @@ function bindFitDrag() {
       const inside = mm != null && ev.clientX >= gr.left && ev.clientX <= gr.right && ev.clientY >= gr.top && ev.clientY <= gr.bottom;
       at = inside ? clamp(Math.floor(mm / 15) * 15, CFG.settings.dayStart, CFG.settings.dayEnd - 15) : null;
       ghost.classList.toggle('over', inside);
+      const itm = fitItem(row.dataset.drag);
+      if (grid._ghost) grid._ghost(at, itm ? itm.min : 30);
       ghost.textContent = row.dataset.label + (at != null ? ' · ' + hm(at) : ' · drop on the calendar');
     };
     const up = () => { const drop = at; const was = !!ghost; off(); if (was && drop != null) openPlace(row.dataset.drag, drop); };
@@ -803,7 +819,7 @@ function bindFitDrag() {
       clearTimeout(lp);
       removeEventListener('pointermove', mv); removeEventListener('pointerup', up); removeEventListener('pointercancel', off);
       document.removeEventListener('touchmove', tm);
-      row.classList.remove('lifting'); if (ghost) ghost.remove(); ghost = null;
+      row.classList.remove('lifting'); if (ghost) ghost.remove(); ghost = null; if (grid._ghost) grid._ghost(null);
       setTimeout(() => { DRAGGING = false; }, 0);
     };
     document.addEventListener('touchmove', tm, { passive: false });
@@ -820,8 +836,11 @@ function viewToday() {
   const free = X.gaps(d.blocks, isToday ? Math.max(s.dayStart, nm) : s.dayStart, s.bedtime, 15).reduce((a, g) => a + g.end - g.start, 0);
   const pil = X.dayStats(CFG, d);
   const yday = DAYS[addDays(CUR, -1)];
-  const actions = '<button class="iconbtn" data-act="prev" aria-label="Previous day">' + ic('left') + '</button><button class="iconbtn" data-act="next" aria-label="Next day">' + ic('right') + '</button>'
-    + (isToday ? '' : '<button class="btn" data-act="gotoday">Today</button>')
+  const ws0 = weekStart(CUR);
+  const strip = '<div class="dstrip"><button class="ds-arrow" data-act="dsweek" data-w="-7" aria-label="Previous week">' + ic('left') + '</button>'
+    + [0, 1, 2, 3, 4, 5, 6].map(i => { const k = addDays(ws0, i), dd = X.parseKey(k); return '<button class="ds-day' + (k === CUR ? ' on' : '') + (k === t ? ' today' : '') + '" data-act="dsgo" data-d="' + k + '"><span>' + DOW[dd.getDay()] + '</span><b>' + dd.getDate() + '</b></button>'; }).join('')
+    + '<button class="ds-arrow" data-act="dsweek" data-w="7" aria-label="Next week">' + ic('right') + '</button></div>';
+  const actions = strip + (isToday ? '' : '<button class="btn" data-act="gotoday">Today</button>')
     + '<button class="btn" data-act="print" aria-label="Print">' + ic('print') + (phone ? '' : 'Print') + '</button>'
     + (CUR <= t ? '<button class="btn pri" data-act="close">Close day</button>' : '');
   let top = '';
@@ -1342,6 +1361,8 @@ const ACTS = {
   prev: () => { CUR = addDays(CUR, -1); SCROLL_NOW = true; render(); },
   next: () => { CUR = addDays(CUR, 1); SCROLL_NOW = true; render(); },
   noop: () => {},
+  dsgo: a => { CUR = a.dataset.d; SCROLL_NOW = true; render(); },
+  dsweek: a => { CUR = addDays(CUR, +a.dataset.w); SCROLL_NOW = true; render(); },
   fitadd: fitAdd,
   fitdone: a => { const d = AG_DAY, x = d && (d.todo || []).find(y => y.id === a.dataset.id); if (!x) return; const b = blockOf(d, x); x.done = !(x.done || (b && b.status === 'done')); if (b) b.status = x.done ? 'done' : 'planned'; saveDay(d); render(); },
   fitdel: a => { const d = AG_DAY; if (!d) return; const before = clone(d); d.todo = (d.todo || []).filter(y => y.id !== a.dataset.id); saveDay(d); render(); toast('Removed from the list', 'Undo', () => { saveDay(before); render(); }); },
