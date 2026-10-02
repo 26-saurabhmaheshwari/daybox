@@ -1,0 +1,8 @@
+{
+  "name": "daybox-saarthi",
+  "private": true,
+  "description": "Saarthi bridge: lets Claude Code read DayBox data and send suggestions to the inbox.",
+  "dependencies": {
+    "firebase-admin": "^13.0.0"
+  }
+}
