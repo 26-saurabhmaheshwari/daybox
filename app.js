@@ -1122,7 +1122,7 @@ function typeCard() {
     let h = '<div class="li typ" data-type="' + t.id + '"><input type="text" value="' + esc(t.name) + '" aria-label="Type name"><span class="m">' + n + ' categor' + (n === 1 ? 'y' : 'ies') + '</span>'
       + (fixed ? '<span class="m" title="Built in: rename only">built in</span>' : '<button type="button" class="btn ghost sm" data-typedel="' + t.id + '" aria-label="Delete ' + esc(t.name) + '" title="Delete">×</button>') + '</div>';
     if (TYPE_DEL !== t.id) return h;
-    return h + '<div class="cat-del"><span>Delete <b>' + esc(t.name) + '</b>?' + (n ? ' Move its ' + n + ' categor' + (n === 1 ? 'y' : 'ies') + ' to' : '') + '</span><select id="typeTo">' + types.filter(x => x.id !== t.id).map(x => '<option value="' + x.id + '">' + esc(x.name) + '</option>').join('') + '</select>'
+    return h + '<div class="cat-del"><span>Delete <b>' + esc(t.name) + '</b>?' + (n ? ' Move its ' + n + ' categor' + (n === 1 ? 'y' : 'ies') + ' to' : '') + '</span><select id="typeTo">' + types.filter(x => x.id !== t.id).map(x => '<option value="' + x.id + '"' + (x.id === 'nongoal' ? ' selected' : '') + '>' + esc(x.name) + '</option>').join('') + '</select>'
       + '<button type="button" class="btn sm danger" id="typeYes">Delete</button><button type="button" class="btn sm" id="typeNo">Cancel</button></div>';
   };
   return '<div class="card"><h3>Types</h3><div class="list">' + types.map(row).join('') + '</div>'
