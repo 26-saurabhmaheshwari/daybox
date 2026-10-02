@@ -409,6 +409,19 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 .pie span{position:absolute;inset:0;display:grid;place-items:center;z-index:1;font-weight:800;font-size:.9rem}
 .pie-leg{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1}
 .pie-leg>div{display:grid;grid-template-columns:minmax(0,1fr) 40px 60px;gap:8px;align-items:center}
+.wd{display:flex;flex-direction:column;gap:14px;padding:2px 2px 6px}
+.wd-date{display:flex;flex-direction:column;gap:2px}.wd-date b{font-family:var(--f-display);font-size:1.45rem;letter-spacing:-.01em}.wd-date span{color:var(--muted);font-size:.8rem}
+.wd-mit{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:10px 12px;border-radius:12px;background:var(--accent-soft)}
+.wd-mit span{font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-right:4px}.wd-mit b{font-size:.9rem}.wd-mit b+b::before{content:'· ';color:var(--muted)}
+.wd-ph{font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 6px}
+.wd-row{display:grid;grid-template-columns:52px 4px minmax(0,1fr);gap:10px;padding:7px 0;border-bottom:1px dashed var(--line2)}
+.wd-row:last-child{border-bottom:0}
+.wd-row>i{background:var(--c);border-radius:3px}
+.wd-t{font-family:var(--f-mono);font-size:.86rem;font-weight:700;display:flex;flex-direction:column;line-height:1.25}.wd-t small{font-weight:500;color:var(--muted);font-size:.72rem}
+.wd-b b{font-size:.95rem}
+.wd-att{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:.8rem;margin-top:3px}
+.wd-note{font-size:.8rem;color:var(--muted);margin-top:3px;font-style:italic}
+.wd-cat{font-size:.7rem;color:var(--faint,var(--muted));margin-top:3px}
 .pv-day{margin:4px 0 12px}.pv-h{font-weight:700;font-size:.84rem;margin-bottom:4px}
 .pv-cols{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .pv-t{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:2px}
@@ -620,7 +633,7 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 <div id="ov" hidden><div id="sheet" role="dialog" aria-modal="true"></div></div>
 <div id="toast" hidden></div>
 <div id="printArea"></div>
-<script src="core.js?v=82"></script>
-<script src="app.js?v=82"></script>
+<script src="core.js?v=83"></script>
+<script src="app.js?v=83"></script>
 </body>
 </html>

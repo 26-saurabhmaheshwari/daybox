@@ -1318,6 +1318,33 @@ function importFile(f) {
 }
 
 /* ---------- print ---------- */
+/* "Write it down": the day on screen as a clean list to copy into your notebook (or copy as text) */
+function writeDown(date) {
+  const d = day(date), blocks = d.blocks.filter(X.live).slice().sort((a, b) => a.start - b.start);
+  const mits = blocks.filter(b => b.mit);
+  const parts = DAY_PARTS.map(([name, h0, h1]) => ({ name, list: blocks.filter(b => b.start >= h0 * 60 && b.start < h1 * 60) })).filter(p => p.list.length);
+  const early = blocks.filter(b => b.start < DAY_PARTS[0][1] * 60);
+  if (early.length) parts.unshift({ name: 'Early', list: early });
+  const line = b => { const att = X.attachObjs(b.attach).map(a => a.t); return { att, note: b.note || '' }; };
+  const text = fmtLong(date) + '\n' + (mits.length ? 'MIT: ' + mits.map(b => b.title).join(', ') + '\n' : '') + parts.map(p => '\n' + p.name.toUpperCase() + '\n' + p.list.map(b => {
+    const x = line(b); return hm(b.start) + '-' + hm(b.start + b.dur) + '  ' + b.title + (x.att.length ? ' (' + x.att.join(', ') + ')' : '') + (x.note ? ' - ' + x.note : '');
+  }).join('\n')).join('\n');
+  const html = '<div class="sh-h"><h2>Write it down</h2><button class="iconbtn" data-x aria-label="Close">×</button></div>'
+    + '<div class="wd"><div class="wd-date"><b>' + esc(fmtLong(date)) + '</b><span>' + blocks.length + ' blocks · ' + durTxt(blocks.reduce((a, b) => a + b.dur, 0)) + ' planned</span></div>'
+    + (mits.length ? '<div class="wd-mit"><span>Most important</span>' + mits.map(b => '<b>' + esc(b.title) + '</b>').join('') + '</div>' : '')
+    + parts.map(p => '<div class="wd-part"><div class="wd-ph">' + p.name + '</div>' + p.list.map(b => {
+      const c = catOf(CFG, b.cat), x = line(b);
+      return '<div class="wd-row" style="--c:' + c.color + '"><span class="wd-t">' + hm(b.start) + '<small>' + hm(b.start + b.dur) + '</small></span><i></i><div class="wd-b"><b>' + esc(b.title) + (b.mit ? ' ★' : '') + '</b>'
+        + (x.att.length ? '<div class="wd-att">' + x.att.map(a => '<span>☐ ' + esc(a) + '</span>').join('') + '</div>' : '')
+        + (x.note ? '<div class="wd-note">' + esc(x.note) + '</div>' : '') + '<div class="wd-cat">' + esc(c.name) + ' · ' + durTxt(b.dur) + '</div></div></div>';
+    }).join('') + '</div>').join('')
+    + (blocks.length ? '' : '<div class="empty">Nothing planned for this day.</div>') + '</div>'
+    + '<div class="sh-f"><button class="btn" data-copy>Copy as text</button><button class="btn" data-print>Print it</button><button class="btn pri" data-x>Done</button></div>';
+  openSheet(html, sh => {
+    $('[data-copy]', sh).onclick = () => { try { navigator.clipboard.writeText(text).then(() => toast('Copied. Paste it in your notes.'), () => toast('Could not copy.')); } catch (e) { toast('Could not copy.'); } };
+    $('[data-print]', sh).onclick = () => { closeSheet(); printDay(date, false); };
+  });
+}
 function printDay(date, blank) {
   const d = day(date), s = CFG.settings;
   const close = '<div class="sec"><b>Close-out</b><div>One line: what made today different from yesterday?</div><div class="ln"></div><div class="ln"></div>'
@@ -1433,7 +1460,8 @@ const ACTS = {
   wprev: () => { WEEK = addDays(WEEK, -7); render(); },
   wnext: () => { WEEK = addDays(WEEK, 7); render(); },
   wtoday: () => { WEEK = weekStart(today()); render(); },
-  print: () => openSheet('<div class="sh-h"><h2>Print</h2><button class="iconbtn" data-x aria-label="Close">×</button></div><div class="form"><button class="btn pri" data-act="printplan">Print ' + fmtShort(CUR) + ' plan, with tick boxes</button><button class="btn" data-act="printblank">Print a blank day page to fill by hand</button></div>'),
+  print: () => openSheet('<div class="sh-h"><h2>Print</h2><button class="iconbtn" data-x aria-label="Close">×</button></div><div class="form"><button class="btn pri" data-act="writedown">Write it down: ' + fmtShort(CUR) + ' as a clean list</button><button class="btn" data-act="printplan">Print ' + fmtShort(CUR) + ' plan, with tick boxes</button><button class="btn" data-act="printblank">Print a blank day page to fill by hand</button></div>'),
+  writedown: () => { closeSheet(); writeDown(CUR); },
   printplan: () => { closeSheet(); printDay(CUR, false); },
   printblank: () => { closeSheet(); printDay(CUR, true); },
   fill: () => doFill(CUR),
