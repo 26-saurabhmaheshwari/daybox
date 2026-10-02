@@ -256,6 +256,13 @@ t('deleteRule: all versions gone, planned blocks from today removed, past days k
   assert(m.rules.find(x => x.id === r.id).deleted && m.rules.find(x => x.id === nr.id).deleted, 'both versions');
   assert.strictEqual(ch.join(), fut); assert.strictEqual(st.days[fut].blocks.length, 0); assert.strictEqual(st.days[past].blocks.length, 1);
 });
+t('ops: editItem renames a bank item, removeItem deletes it', () => {
+  const m = X.seedConfig(); m.items = [{ id: 'f', kind: 'fun', title: 'painting', cat: 'hobby' }];
+  assert(!X.applyOp(m, { days: {} }, { type: 'editItem', title: 'Painting', patch: { title: 'Painting & mandala' } }, TODAY).error);
+  assert.strictEqual(m.items[0].title, 'Painting & mandala');
+  assert(X.applyOp(m, { days: {} }, { type: 'editItem', title: 'nope', patch: {} }, TODAY).error);
+  X.applyOp(m, { days: {} }, { type: 'removeItem', title: 'painting & mandala' }, TODAY); assert(m.items[0].deleted);
+});
 t('my-routine.json loads', () => {
   if (!fs.existsSync(__dirname + '/my-routine.json')) return;
   const o = JSON.parse(read('my-routine.json')); const m = X.mergeConfig(o.config);

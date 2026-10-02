@@ -753,7 +753,7 @@ function mergeCloud(local, cloud) {
 /* ---------- Saarthi proposals: exact edits you approve ---------- */
 /* op: {type:'addBlock', date, block} | {type:'moveBlock', date, title, at?, start, dur?} | {type:'removeBlock', date, title, at?}
        | {type:'setStatus', date, title, at?, status} | {type:'addTodo', date, todo} | {type:'removeTodo', date, title}
-       | {type:'editTemplateBlock', tpl, title, start?, dur?, cat?} | {type:'addItem', item} | {type:'setBalance', balance} */
+       | {type:'editTemplateBlock', tpl, title, start?, dur?, cat?} | {type:'addItem', item} | {type:'editItem', title, patch} | {type:'removeItem', title} | {type:'setBalance', balance} */
 function applyOp(cfg, store, op, today) {
   const dayFor = date => { const d = clone(getDay(store, cfg, date, today)); d.virtual = false; delete d.untracked; return d; };
   if (op.type === 'addBlock') {
@@ -814,6 +814,13 @@ function applyOp(cfg, store, op, today) {
     const mr = makeRoom(cfg, Object.assign({}, r, op.patch || {}), r.id, today);
     if (mr.error) return mr;
     editRule(cfg, r.id, op.patch || {}, today);
+    return { cfg: true };
+  }
+  if (op.type === 'editItem' || op.type === 'removeItem') {
+    const it = cfg.items.find(i => !i.deleted && norm(i.title) === norm(op.title));
+    if (!it) return { error: 'bank item "' + op.title + '" not found' };
+    if (op.type === 'removeItem') it.deleted = true;
+    else { const p = op.patch || {}; ['title', 'cat', 'min', 'perWeek', 'needs', 'zone', 'energy'].forEach(k => { if (p[k] != null) it[k] = p[k]; }); }
     return { cfg: true };
   }
   if (op.type === 'addItem') { cfg.items.push(Object.assign({ id: uid(), kind: 'dream', min: 30, energy: 'light', zone: 'any' }, op.item)); return { cfg: true }; }
