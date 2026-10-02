@@ -144,9 +144,6 @@ button.ag-h{cursor:pointer}
 @media (max-width:820px){.fit-add{grid-template-columns:1fr 1fr auto}.fit-add input{grid-column:1/-1}}
 /* ---------- Today: now card ---------- */
 /* ---------- Today: layout + panels ---------- */
-.tcols{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:18px;align-items:start}
-.tcols .tc-right{position:sticky;top:84px}
-.tc-right .fitbox{padding:14px 12px}
 .panel,.fitbox{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:18px 20px;box-shadow:var(--shadow-sm)}
 .ph{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
 .ph h3{font-size:1.02rem}
@@ -163,8 +160,9 @@ body.dragging-task .tl-free.small .tl-gap{border-color:color-mix(in srgb,var(--a
 body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent) 60%,var(--line))}
 .tl-addrow{display:flex;justify-content:center;padding-top:10px}
 .tcard.sug .btn{background:var(--accent);border-color:var(--accent);color:#fff}
-@media (max-width:1100px){.tcols{grid-template-columns:minmax(0,1fr)}.tcols .tc-right{position:static;order:-1}}
 @media (max-width:820px){
+  .nowcard{gap:12px;padding:14px 16px}
+  .nc-stats{margin-left:0;width:100%;justify-content:space-between}
   .panel,.fitbox{padding:14px 12px;border-radius:16px}
   .legend{display:none}
 }
@@ -203,6 +201,24 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 .ck-c.st-done .ck-i{background:var(--k);color:#fff}
 .legend{display:flex;gap:6px;flex-wrap:wrap}
 .qbtns{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+/* ---------- Today: morning / afternoon / evening ---------- */
+.parts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.part{border:1px solid var(--line);border-radius:16px;padding:12px 12px 10px;background:var(--surface)}
+.part.now{border-color:color-mix(in srgb,var(--accent) 45%,var(--line));box-shadow:0 0 0 3px var(--accent-soft)}
+.pt-h{display:flex;align-items:baseline;justify-content:space-between;margin:0 2px 10px}
+.pt-h b{font-size:.95rem;display:flex;align-items:center;gap:7px}
+.pt-h b::before{content:'';width:9px;height:9px;border-radius:50%;background:var(--pt)}
+.part.am{--pt:#E6A100}.part.pm{--pt:#2F7BF5}.part.ev{--pt:#7B68EE}
+.pt-h span{font-size:.7rem;font-weight:700;color:var(--faint)}
+.pt-g{display:grid;grid-template-columns:24px repeat(2,minmax(0,1fr));gap:5px}
+.pt-g .ck-c{height:clamp(34px,calc((100vh - 330px) / 7),50px);border-radius:9px;padding:0 9px;font-size:.78rem}
+.pt-g .ck-r{font-size:.78rem;padding-right:6px}
+.pt-g .ck-h{font-size:.66rem;padding-bottom:3px}
+@media (max-width:900px){.parts{grid-template-columns:minmax(0,1fr)}}
+/* To fit: full-width card under the day, tasks flow in columns */
+#view > .fitbox{margin-top:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:6px 12px;align-items:start}
+#view > .fitbox > .fb-h,#view > .fitbox > .fb-sec,#view > .fitbox > .fb-note,#view > .fitbox > .fb-warn{grid-column:1/-1}
+#view > .fitbox .tcard{margin-bottom:0}
 /* ---------- week of clocks ---------- */
 .wk-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:12px}
 .wk-day{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:10px 9px 9px;box-shadow:var(--shadow-sm);min-width:0}
@@ -231,6 +247,18 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 .tc-ok:hover{filter:brightness(1.08)}
 .fitbox .tc-chk{background:var(--surface)}
 .s-ic{width:12px;height:12px;flex:none}
+/* ---------- Today: now card ---------- */
+.nowcard{display:flex;align-items:center;gap:22px;flex-wrap:wrap;background:linear-gradient(120deg,#6C5CE7,#A27BF6 60%,#E07BD4);color:#fff;border-radius:18px;padding:16px 20px;margin-bottom:16px;box-shadow:0 10px 30px rgba(108,92,231,.25)}
+.nc-l{font-size:.68rem;font-weight:800;letter-spacing:.12em;opacity:.85}
+.nc-t{font-size:1.22rem;font-weight:800;letter-spacing:-.01em}
+.nc-bar{flex:1;min-width:180px;max-width:380px}
+.nc-track{height:6px;border-radius:4px;background:rgba(255,255,255,.3);overflow:hidden}
+.nc-track i{display:block;height:100%;background:#fff;border-radius:4px}
+.nc-times{display:flex;justify-content:space-between;gap:8px;font-size:.72rem;opacity:.92;margin-top:5px;font-variant-numeric:tabular-nums}
+.nc-stats{display:flex;gap:20px;margin-left:auto;font-size:.74rem;opacity:.95}
+.nc-stats b{display:block;font-size:1.08rem;font-weight:800}
+.nc-btn{border:0;background:rgba(255,255,255,.18);color:#fff;border-radius:10px;padding:8px 13px;font-weight:700;cursor:pointer}
+.nc-btn:hover{background:rgba(255,255,255,.3)}
 /* ---------- day header: arrows + date, green progress of the same width ---------- */
 .dnav{display:inline-flex;flex-direction:column;gap:6px;width:min(360px,100%);font-family:var(--f-body)}
 .dn-row{display:flex;align-items:center;gap:4px}
@@ -239,10 +267,6 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 .dn-a:hover{color:var(--accent);border-color:var(--accent)}
 .dn-mid{flex:1;border:0;background:none;font:inherit;font-size:1.12rem;font-weight:800;letter-spacing:-.01em;color:var(--ink);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px}
 .dn-mid:hover{color:var(--accent)}
-.dn-bar{display:block;height:7px;border-radius:4px;background:var(--done-bg);overflow:hidden}
-.dn-bar i{display:block;height:100%;border-radius:4px;background:var(--done)}
-.dn-pt{display:flex;justify-content:space-between;gap:10px;font-size:.72rem;font-weight:700;color:var(--done);font-variant-numeric:tabular-nums;margin-top:-2px}
-.dn-pt span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* ---------- task cards (To fit) ---------- */
 .fitbox{display:flex;flex-direction:column}
 .fb-h{margin:2px 2px 10px}
@@ -470,7 +494,7 @@ body.dragging-task .tl-free .tl-gap{border-color:color-mix(in srgb,var(--accent)
 <div id="ov" hidden><div id="sheet" role="dialog" aria-modal="true"></div></div>
 <div id="toast" hidden></div>
 <div id="printArea"></div>
-<script src="core.js?v=34"></script>
-<script src="app.js?v=34"></script>
+<script src="core.js?v=36"></script>
+<script src="app.js?v=36"></script>
 </body>
 </html>

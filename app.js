@@ -512,10 +512,10 @@ function cellBlock(blocks, m) {
   });
   return bo > 0 ? best : null;
 }
-function clockHtml(d, big) {
+// every half hour of the day -> the block that fills it, plus a renderer for one cell (span 2 = both halves merged)
+function cellFactory(d, big) {
   const t = today(), nm = nowMin(), byMin = {}, seen = new Set();
-  const mins = []; CLOCK_ROWS.forEach(r => mins.push(...cellMins(r)));
-  mins.slice().sort((a, b) => a - b).forEach(m => { const b = cellBlock(d.blocks, m); byMin[m] = { b, first: !!b && !seen.has(b.id) }; if (b) seen.add(b.id); });
+  for (let m = 0; m < 1440; m += 30) { const b = cellBlock(d.blocks, m); byMin[m] = { b, first: !!b && !seen.has(b.id) }; if (b) seen.add(b.id); }
   // span: 2 when one block fills both halves of the hour (cells merge into one wide bar)
   const cell = (m, pm, span) => {
     const x = byMin[m], b = x.b, isNow = d.date === t && nm >= m && nm < m + 30 * (span || 1);
@@ -532,17 +532,31 @@ function clockHtml(d, big) {
     return '<div class="' + cls + ' st-' + st + (x.first ? ' first' : '') + (drag ? ' drag' : '') + '" data-m="' + m + '" data-id="' + b.id + '" style="--k:' + c.color + '"'
       + (drag ? ' data-drag="blk:' + b.id + '" data-label="' + esc(b.title) + '"' : '') + ' title="' + esc(b.title) + ' ' + hm(b.start) + '–' + hm(b.start + b.dur) + '">' + inner + '</div>';
   };
+  const pair = (m0, pm) => { const b0 = byMin[m0].b; return b0 && b0 === byMin[m0 + 30].b ? cell(m0, pm, 2) : cell(m0, pm) + cell(m0 + 30, false); };
+  return { byMin, cell, pair };
+}
+function clockHtml(d, big) {
+  const { pair } = cellFactory(d, big);
   let h = '<div class="ck' + (big ? ' big' : '') + '"><span></span><span class="ck-h am">AM :00</span><span class="ck-h am">:30</span><span class="ck-h pm">PM :00</span><span class="ck-h pm">:30</span>';
   CLOCK_ROWS.forEach((r, i) => {
     if (i === 6) h += '<div class="ck-zone"><span>AM · night</span><span>PM · afternoon</span></div>';
     const ms = cellMins(r);
-    h += '<span class="ck-r">' + r + '</span>';
-    [[ms[0], ms[1], false], [ms[2], ms[3], true]].forEach(([m0, m1, pm]) => {
-      const b0 = byMin[m0].b;
-      h += b0 && b0 === byMin[m1].b ? cell(m0, pm, 2) : cell(m0, pm) + cell(m1, false);
-    });
+    h += '<span class="ck-r">' + r + '</span>' + pair(ms[0], false) + pair(ms[2], true);
   });
   return h + '</div>';
+}
+// Today: three cards, one hour per row, :00 | :30
+const DAY_PARTS = [['Morning', 6, 12, 'am'], ['Afternoon', 12, 18, 'pm'], ['Evening', 18, 24, 'ev']];
+const h12 = h => (h % 12) || 12;
+function partsHtml(d) {
+  const { pair } = cellFactory(d, true), nm = nowMin(), isT = d.date === today();
+  return '<div class="parts">' + DAY_PARTS.map(([name, h0, h1, k]) => {
+    const now = isT && nm >= h0 * 60 && nm < h1 * 60;
+    let g = '<div class="part ' + k + (now ? ' now' : '') + '"><div class="pt-h"><b>' + name + '</b><span>' + h12(h0) + (h0 < 12 ? 'am' : 'pm') + ' – ' + h12(h1) + (h1 < 12 || h1 === 24 ? 'am' : 'pm') + '</span></div>'
+      + '<div class="pt-g"><span></span><span class="ck-h">:00</span><span class="ck-h">:30</span>';
+    for (let h = h0; h < h1; h++) g += '<span class="ck-r">' + h12(h) + '</span>' + pair(h * 60, false);
+    return g + '</div></div>';
+  }).join('') + '</div>';
 }
 function clockLegend() { return '<div class="legend"><span class="chip nx">Upcoming</span><span class="chip mk">To mark</span><span class="chip dn">Done</span><span class="chip sk">Skipped</span></div>'; }
 // tapping a cell: marked blocks open a summary (locked), unmarked past ones a quick Done/Skip, the rest the editor; empty cells add a block
@@ -616,6 +630,19 @@ function bindDrag() {
     const d = RENDERED[date]; if (d) tapCell(d, el);
   };
 }
+function nowBarHtml(d, stats) {
+  const nm = nowMin(), s = CFG.settings;
+  const cur = currentBlock(d, nm);
+  const next = d.blocks.filter(X.live).filter(b => b.start > nm).sort((a, b) => a.start - b.start)[0];
+  let label = 'NOW', title, from, to, left;
+  if (nm >= s.bedtime) { title = 'Past your bedtime'; from = s.bedtime; to = s.dayEnd; left = 'lights out'; }
+  else if (cur) { title = esc(cur.title); from = cur.start; to = cur.start + cur.dur; left = durTxt(to - nm) + ' left'; }
+  else { label = 'FREE NOW'; title = next ? 'Until ' + esc(next.title) : 'Until bedtime'; from = nm; to = next ? next.start : s.bedtime; left = durTxt(to - nm); }
+  const pct = clamp(Math.round((nm - from) / Math.max(1, to - from) * 100), 0, 100);
+  return '<div class="nowcard" id="nowbar"><div class="nc-main"><div class="nc-l">' + label + '</div><div class="nc-t">' + title + '</div></div>'
+    + '<div class="nc-bar"><div class="nc-track"><i style="width:' + (cur ? pct : 0) + '%"></i></div><div class="nc-times"><span>' + hm(from) + '</span><span>' + left + '</span><span>' + hm(to) + '</span></div></div>'
+    + '<div class="nc-stats">' + (stats || '') + '</div><button class="nc-btn" data-act="bored">Bored?</button></div>';
+}
 function openAddTask() {
   const d = AG_DAY; if (!d) return;
   if ((d.todo || []).length >= FIT_MAX) return toast(FIT_MAX + ' is the limit for a day. Tick one done or remove one.');
@@ -646,32 +673,16 @@ function viewToday() {
   const pil = X.dayStats(CFG, d);
   const yday = DAYS[addDays(CUR, -1)];
   // one date with arrows, and a green bar of the same width: blocks done out of the day's blocks
-  const pd = d.blocks.filter(b => b.cat !== 'sleep' && b.status !== 'moved'), pDone = pd.filter(b => b.status === 'done').length;
   const dd0 = X.parseKey(CUR), dateTxt = DOWL[dd0.getDay()] + ', ' + dd0.getDate() + ' ' + MON[dd0.getMonth()];
-  let barPct, barTxt, barEnd;
-  if (isToday) {
-    const live = d.blocks.filter(X.live), cur = currentBlock(d, nm);
-    const next = live.filter(b => b.start > nm).sort((a, b) => a.start - b.start)[0];
-    if (nm >= s.bedtime) { barPct = 100; barTxt = 'Past bedtime · lights out'; }
-    else if (cur) { barPct = Math.round((nm - cur.start) / cur.dur * 100); barTxt = esc(cur.title) + ' · ' + durTxt(cur.start + cur.dur - nm) + ' left'; }
-    else {
-      const prevEnd = live.filter(b => b.start + b.dur <= nm).reduce((m, b) => Math.max(m, b.start + b.dur), s.dayStart);
-      const until = next ? next.start : s.bedtime;
-      barPct = Math.round((nm - prevEnd) / Math.max(1, until - prevEnd) * 100);
-      barTxt = 'Free · ' + durTxt(until - nm) + ' until ' + (next ? esc(next.title) : 'bedtime');
-    }
-    barEnd = sc.past ? sc.marked + '/' + sc.past + ' marked' : '';
-  } else { barPct = pd.length ? Math.round(pDone / pd.length * 100) : 0; barTxt = pDone + '/' + pd.length + ' done'; barEnd = ''; }
   const dnav = '<span class="dnav"><span class="dn-row"><button type="button" class="dn-a" data-act="prev" aria-label="Previous day">' + ic('left') + '</button>'
     + '<button type="button" class="dn-mid" data-act="gotoday" title="' + (isToday ? 'Today' : 'Back to today') + '">' + (isToday ? 'Today · ' : '') + dateTxt + '</button>'
-    + '<button type="button" class="dn-a" data-act="next" aria-label="Next day">' + ic('right') + '</button></span>'
-    + '<span class="dn-bar"><i style="width:' + clamp(barPct, 0, 100) + '%"></i></span>'
-    + '<span class="dn-pt"><span>' + barTxt + '</span>' + (barEnd ? '<span>' + barEnd + '</span>' : '') + '</span></span>';
-  const actions = (isToday ? '<button class="btn" data-act="bored">Bored?</button>' : '') + '<button class="btn" data-act="print" aria-label="Print" title="Print">' + ic('print') + '</button>'
+    + '<button type="button" class="dn-a" data-act="next" aria-label="Next day">' + ic('right') + '</button></span></span>';
+  const actions = '<button class="btn" data-act="print" aria-label="Print" title="Print">' + ic('print') + '</button>'
     + (CUR <= t ? '<button class="btn pri" data-act="close">Close day</button>' : '');
   let top = '';
   if (!localStorage.getItem(LS_ONB)) top += '<div class="card inbox" style="margin-bottom:12px"><h3>Welcome to DayBox</h3><ol class="small" style="margin:0 0 10px;padding-left:18px"><li>Sign in with Google (the same account as Tenfold) so it syncs to your phone.</li><li>When a block ends, tap ✓ or ✗. That is all the logging.</li><li>Bored or free? Press <b>What now?</b></li></ol><div class="row"><button class="btn pri sm" data-act="signin">Sign in</button><button class="btn ghost sm" data-act="onb">Got it</button></div></div>';
   const statTxt = d.untracked ? '' : (sc.past ? '<span><b>' + sc.marked + '/' + sc.past + '</b>marked</span>' : '') + (pil.pillarsPlanned ? '<span><b>' + pil.pillarsKept + '/' + pil.pillarsPlanned + '</b>pillars</span>' : '') + '<span><b>' + durTxt(free) + '</b>free</span>';
+  if (isToday) top += nowBarHtml(d, statTxt);
   if (isToday && pendingOps()) top += '<div class="al" style="margin-bottom:10px">' + ic('saarthi', 's-ic') + '<span>Saarthi has <b>' + pendingOps() + '</b> suggestions.</span><button class="btn sm x" data-act="nav" data-v="saarthi">Open</button></div>';
   if (yday && yday.close && yday.close.mit && isToday) top += '<div class="al" style="margin-bottom:10px">★ <span>Today\'s MIT (from last night): <b>' + esc(yday.close.mit) + '</b></span></div>';
   if (d.untracked) top += '<div class="untracked">' + ic('lock', 's-ic') + '<span>Not tracked. DayBox was not used this day.</span><button class="btn sm" data-act="track-empty">Add what happened</button><button class="btn sm" data-act="track-routine">Fill from routine</button></div>';
@@ -690,8 +701,8 @@ function viewToday() {
   }
   const fit = fitHtml(d);
   RENDERED[CUR] = d;
-  const clock = d.untracked ? '' : '<div class="panel" id="dayClock" data-date="' + CUR + '"><div class="ph"><h3>' + (isToday ? 'Your day' : past ? 'That day' : 'Plan for ' + fmtShort(CUR)) + '</h3>' + clockLegend() + '</div>' + clockHtml(d, true) + '</div>';
-  const body = top + (fit ? '<div class="tcols"><div class="tc-left">' + clock + '</div><div class="tc-right">' + fit + '</div></div>' : clock);
+  const clock = d.untracked ? '' : '<div class="panel" id="dayClock" data-date="' + CUR + '"><div class="ph"><h3>' + (isToday ? 'Your day' : past ? 'That day' : 'Plan for ' + fmtShort(CUR)) + '</h3>' + clockLegend() + '</div>' + partsHtml(d) + '</div>';
+  const body = top + clock + fit;
   return {
     title: dnav, sub: '', actions, body,
     after() { bindDrag(); },
