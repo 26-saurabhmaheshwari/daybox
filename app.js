@@ -36,7 +36,7 @@ let PLAN_WS = null;
 let TAB = { bank: 'regular', routine: 'templates', insights: '7' };
 let SCROLL_NOW = true;
 let DRAGGING = false;
-let TIPS_OPEN = false, AG_DAY = null;
+let TIPS_OPEN = false, AG_DAY = null, TL_OPEN = false;
 const UNLOCKED = new Set();  // marked blocks unlocked for one edit; cleared when the editor closes or a drag ends
 const isMarked = b => !!b.status && b.status !== 'planned';
 
@@ -690,9 +690,19 @@ function timelineHtml(d) {
   const to = Math.max(s.bedtime, live.length ? Math.max(...live.map(b => b.start + b.dur)) : s.bedtime);
   const gs = X.gaps(d.blocks, live.length ? live[0].start : from, to, 15);
   const next = d.date >= t ? live.find(b => blkState(d, b, nm, t) === 'up') : null;
-  const items = shown.map(b => ({ at: b.start, html: tlCard(d, b, blkState(d, b, nm, t), b === next) }))
-    .concat(gs.map(g => ({ at: g.start, html: tlFree(g, d.date === t && g.start <= nm && nm < g.end, nm, !past && (d.date > t || g.end > nm)) })))
+  // today: done/skipped blocks and free time that are already over fold into one line; unmarked ones stay
+  const isT = d.date === t, st = b => blkState(d, b, nm, t);
+  const folded = isT ? shown.filter(b => ['done', 'skip', 'past'].includes(st(b))) : [];
+  const fold = folded.length && !TL_OPEN;
+  const cards = fold ? shown.filter(b => !folded.includes(b)) : shown;
+  const gaps = isT && !TL_OPEN ? gs.filter(g => g.end > nm) : gs;
+  const items = cards.map(b => ({ at: b.start, html: tlCard(d, b, st(b), b === next) }))
+    .concat(gaps.map(g => ({ at: g.start, html: tlFree(g, isT && g.start <= nm && nm < g.end, nm, !past && (d.date > t || g.end > nm)) })))
     .sort((a, b) => a.at - b.at);
+  if (folded.length) {
+    const nd = folded.filter(b => st(b) === 'done').length, ns = folded.filter(b => st(b) === 'skip').length;
+    items.unshift({ html: '<button type="button" class="tl-fold' + (TL_OPEN ? ' open' : '') + '" data-act="tlfold"><span>' + (TL_OPEN ? 'Hide earlier' : 'Earlier today') + '</span><span class="tl-fold-c">' + (nd ? '<span class="chip dn">' + nd + ' done</span>' : '') + (ns ? '<span class="chip sk">' + ns + ' skipped</span>' : '') + '</span><span class="tl-fold-a">' + (TL_OPEN ? '▾' : '▸') + '</span></button>' });
+  }
   const legend = '<div class="legend"><span class="chip dn">Done</span><span class="chip mk">To mark</span><span class="chip sk">Skipped</span><span class="chip nx">Next</span></div>';
   return '<div class="panel tl" id="dayTl"><div class="ph"><h3>' + (d.date === t ? 'Your day' : past ? 'That day' : 'Plan for ' + fmtShort(d.date)) + '</h3>' + legend + '</div>'
     + (items.length ? items.map(x => x.html).join('') : '<div class="empty">Nothing planned. Add a block or drag a task here.</div>')
@@ -1271,6 +1281,7 @@ const ACTS = {
   prev: () => { CUR = addDays(CUR, -1); SCROLL_NOW = true; render(); },
   next: () => { CUR = addDays(CUR, 1); SCROLL_NOW = true; render(); },
   noop: () => {},
+  tlfold: () => { TL_OPEN = !TL_OPEN; render(); },
   tlopen: a => { const d = AG_DAY, b = d && d.blocks.find(x => x.id === a.dataset.id); if (b) openBlock(d, b); },
   tlunlock: a => { UNLOCKED.add(a.dataset.id); render(); toast('Unlocked for one change. Tap the card to edit it.'); },
   tlmark: a => { const d = AG_DAY, b = d && d.blocks.find(x => x.id === a.dataset.id); if (!b) return; const prev = b.status; b.status = a.dataset.s; saveDay(d); render(); toast(b.title + (b.status === 'done' ? ': done' : ': skipped'), 'Undo', () => { b.status = prev; saveDay(d); render(); }); },
