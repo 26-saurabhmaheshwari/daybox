@@ -11,7 +11,9 @@
    node saarthi.js undo                   restore the last change Saarthi or the inbox made
    node saarthi.js status                 show the inbox
    node saarthi.js ideas [date]           dry run of the +: print Claude's ideas, write nothing
-   node saarthi.js watch                  stay on: the Saarthi + in DayBox asks Claude Code here (headless) for ideas
+   node saarthi.js watch                  stay on: the Saarthi + in DayBox asks Claude Code here (headless) for ideas,
+                                          and the week plan runs each night at settings.weekPlanAt
+   node saarthi.js week                   plan tomorrow..Sunday now (all of next week on a Sunday), to the inbox
 */
 const fs = require('fs'), path = require('path'), os = require('os'), vm = require('vm'), { spawn } = require('child_process');
 let admin;
@@ -82,7 +84,9 @@ async function buildPull(nDays) {
   const days = [];
   for (let i = nDays; i >= -7; i--) {
     const k = X.addDays(t, -i), d = X.getDay(S, cfg, k, t);
-    days.push({ date: k, day: X.DOW[X.dow(k)], state: d.untracked ? 'not tracked' : d.virtual ? 'preview from routine' : 'saved', template: d.tpl && d.tpl.name,
+    const nowM = new Date().getHours() * 60 + new Date().getMinutes();
+    const freeGaps = k < t ? undefined : X.gaps(d.blocks.filter(X.live), k === t ? Math.max(cfg.settings.dayStart, Math.ceil(nowM / 15) * 15) : cfg.settings.dayStart, cfg.settings.bedtime, 30).map(g => X.hm(g.start) + '-' + X.hm(g.end));
+    days.push({ freeGaps, date: k, day: X.DOW[X.dow(k)], state: d.untracked ? 'not tracked' : d.virtual ? 'preview from routine' : 'saved', template: d.tpl && d.tpl.name,
       sanyamSlip: slipDates.has(k) || undefined, slipNote: d.slipNote || undefined, closeLine: d.close && d.close.line || undefined, tomorrowMit: d.close && d.close.mit || undefined,
       toFit: d.todo && d.todo.length ? d.todo.map(x => x.title + ' (' + (x.min || 30) + 'm' + (x.done ? ', done' : x.placed ? ', placed' : ', not placed') + ')') : undefined,
       blocks: d.blocks.slice().sort((a, b) => a.start - b.start).map(b => blk(cfg, b)) });
@@ -98,6 +102,7 @@ async function buildPull(nDays) {
     // non goals: no targets, nothing to tick off. You pick the length and keep them balanced (least done lately first)
     nonGoals: cfg.items.filter(i => !i.deleted && (i.kind === 'dream' || i.kind === 'fun')).map(i => { const ago = X.lastDone(S, i, t); return i.title + ' [' + (i.kind === 'dream' ? 'dream' : i.cat) + (i.kind === 'dream' ? ', ' + i.min + 'm' : '') + (i.needs ? ', needs ' + i.needs : '') + ', ' + X.durTxt(X.hoursDone(S, i)) + ' done' + (ago == null ? '' : ', last ' + ago + 'd ago') + ']'; }),
     boredomList: cfg.boredom,
+    weekPlans: Object.fromEntries([X.weekStart(t), X.addDays(X.weekStart(t), 7)].map(ws => [ws, (cfg.weekPlans || {})[ws] || null])),
     thisWeekBalance: X.balanceState(cfg, week).rows.map(r => r.cat + ' ' + pct(r.share) + ' (target ' + pct(r.target) + ')'),
     report7: brief(X.rangeReport(cfg, S, X.addDays(t, -6), t), cfg),
     report28: brief(X.rangeReport(cfg, S, X.addDays(t, -27), t), cfg),
@@ -122,18 +127,22 @@ function pickIds(inbox, arg) {
 }
 
 async function propose(file) { await proposeObj(JSON.parse(fs.readFileSync(file, 'utf8'))); }
-async function proposeObj(p) {
+// lenient (week plan): drop the ops that do not fit instead of rejecting the whole proposal
+async function proposeObj(p, lenient) {
   const uid = await getUid(), A = await loadAll(uid), t = today();
   if (!p || !Array.isArray(p.ops)) throw new Error('proposal needs "ops": [...]');
-  const cfg = X.clone(A.cfg), store = { days: X.clone(A.store.days) }, errs = [];
+  const cfg = X.clone(A.cfg), store = { days: X.clone(A.store.days) }, errs = [], keep = [];
   p.ops.forEach((o, i) => {
-    if (!o.op || !o.label) return errs.push((i + 1) + ': needs label + op');
-    if (o.op.date && o.op.date < t) errs.push((i + 1) + ': date ' + o.op.date + ' is in the past');
-    const r = X.applyOp(cfg, store, o.op, t);
-    if (r.error) errs.push((i + 1) + ': ' + r.error);
-    else if (r.day) store.days[r.day.date] = r.day;
+    let e = null;
+    if (!o.op || !o.label) e = 'needs label + op';
+    else if (o.op.date && o.op.date < t) e = 'date ' + o.op.date + ' is in the past';
+    else { const r = X.applyOp(cfg, store, o.op, t); if (r.error) e = r.error; else if (r.day) store.days[r.day.date] = r.day; }
+    if (e) errs.push((i + 1) + ': ' + e); else keep.push(o);
   });
-  if (errs.length) throw new Error('Proposal rejected:\n' + errs.join('\n'));
+  if (errs.length && !lenient) throw new Error('Proposal rejected:\n' + errs.join('\n'));
+  if (errs.length) console.log('Dropped ' + errs.length + ' that did not fit:\n  ' + errs.join('\n  '));
+  p.ops = keep;
+  if (!p.ops.length) throw new Error('Nothing in the proposal fitted' + (errs.length ? ': ' + errs[0] : ''));
   if (A.inbox) await write(uid, 'planner/' + uid + '/history/inbox-' + Date.now(), { at: Date.now(), kind: 'inbox-archive', inbox: A.inbox });
   const inbox = { id: 'p' + Date.now(), at: Date.now(), by: 'saarthi', title: p.title || 'Saarthi suggestions', summary: p.summary || '', tips: p.tips || [],
     ops: p.ops.map((o, i) => ({ id: 'o' + (i + 1), label: o.label, why: o.why || '', op: o.op, state: 'pending' })) };
@@ -188,12 +197,48 @@ function fitPrompt(out, ask) {
     'Reply with ONLY the proposal JSON object ({"title","summary","tips","ops"}). No prose, no code fence. Do not use tools.',
     'DATA:\n' + JSON.stringify(out)].join('\n\n');
 }
+/* the week plan: from tomorrow to Sunday; run on a Sunday it is all of next week */
+function weekRange(t) { const from = X.addDays(t, 1); return { from, to: X.addDays(X.weekStart(from), 6) }; }
+function weekPrompt(out, r) {
+  return ['You are Saarthi, the DayBox time coach. Plan the user\'s days ' + r.from + ' to ' + r.to + ' (a week plan, made the night before). The time now is in DATA.now.',
+    saarthiRules(),
+    'Task: look at how this week is going (DATA.days blocks and statuses, regular doneThisWeek vs perWeek, tenfoldGoals minutes left and chunk, thisWeekBalance vs balanceTarget, nonGoals least done lately, weekPlans, skippedByHour, learnings) and fill the free time of each day from ' + r.from + ' to ' + r.to + '.',
+    'Rules for this week plan (they replace the max 5 ops rule): only addBlock, up to 3 per day, 15 in total. Each block sits fully inside that day\'s freeGaps and clashes with nothing (also not with your other blocks that day). Leave at least ' + out.settings.buffer + ' of each day free. Deep work (goals, nuggets) in the hours the user keeps (see skippedByHour), light things in the evening. Behind goals and nuggets first, then the balance, then non goals. A nugget uses its chunk minutes; non goals 20-60m. Never touch pillars or recurring blocks. Set mit:true on one block per day only if that day has no MIT yet.',
+    'label = "Day: activity HH:MM" (e.g. "Tue: Spanish 07:30"), max 5 words. why = one short line with a number from the data. summary = one line on how the week is going and what this plan fixes.',
+    'Reply with ONLY the proposal JSON object ({"title","summary","tips","ops"}). No prose, no code fence. Do not use tools.',
+    'DATA:\n' + JSON.stringify(out)].join('\n\n');
+}
+async function planWeek(dry) {
+  const t = today(), r = weekRange(t);
+  const p = await askClaude(weekPrompt(await buildPull(14), r));
+  p.title = 'Week plan ' + r.from.slice(5) + ' to ' + r.to.slice(5);
+  (p.ops || []).forEach(o => { if (o.op && (o.op.type !== 'addBlock' || !o.op.date || o.op.date < r.from || o.op.date > r.to)) o.op = null; });
+  if (!dry) return proposeObj(p, true);
+  // dry run: check every op against a copy, write nothing
+  const A = await loadAll(await getUid()), cfg = X.clone(A.cfg), store = { days: X.clone(A.store.days) };
+  console.log(p.title + '\n' + (p.summary || ''));
+  (p.ops || []).forEach((o, i) => { const res = o.op ? X.applyOp(cfg, store, o.op, t) : { error: 'not an addBlock in range' }; if (res.day) store.days[res.day.date] = res.day; console.log('  ' + (i + 1) + '. ' + (res.error ? 'DROP ' : 'ok   ') + o.label + (res.error ? ' (' + res.error + ')' : '') + ' - ' + (o.why || '')); });
+  return 0;
+}
 async function watch() {
   const uid = await getUid(), ref = 'planner/' + uid + '/meta/ask';
   console.log('Saarthi watcher on (' + findClaude() + '). Tap + in DayBox -> Saarthi. Ctrl+C to stop.');
   // heartbeat: DayBox shows the "Ask Saarthi" + only while this runs
   const beat = () => write(uid, 'planner/' + uid + '/meta/watcher', { at: Date.now() }).catch(e => console.error('heartbeat: ' + e.message));
   beat(); setInterval(beat, 60e3);
+  // nightly week plan at settings.weekPlanAt (minutes, null = off), once a day, only while this PC runs the watcher
+  const nightly = async () => {
+    try {
+      const c = await db.doc('planner/' + uid + '/meta/config').get(), at = X.mergeConfig(c.exists ? c.data() : null).settings.weekPlanAt;
+      const nowM = new Date().getHours() * 60 + new Date().getMinutes(), t = today();
+      if (at == null || nowM < at || nowM > at + 120) return;
+      const m = await db.doc('planner/' + uid + '/meta/weekplan').get();
+      if (m.exists && m.data().date === t) return;
+      await write(uid, 'planner/' + uid + '/meta/weekplan', { date: t, at: Date.now() });
+      await write(uid, ref, { at: Date.now(), kind: 'week', auto: true, state: 'asked' });
+    } catch (e) { console.error('nightly: ' + e.message); }
+  };
+  nightly(); setInterval(nightly, 5 * 60e3);
   let busy = false;
   db.doc(ref).onSnapshot(async s => {
     const a = s.exists ? s.data() : null;
@@ -201,13 +246,17 @@ async function watch() {
     if (Date.now() - (a.at || 0) > 5 * 60e3) return write(uid, ref, Object.assign({}, a, { state: 'stale' }));
     busy = true;
     const t0 = Date.now(), stamp = () => new Date().toLocaleTimeString();
-    console.log(stamp() + ' asked for ' + a.date + ' (' + (a.slots || '?') + ' slots)');
+    console.log(stamp() + (a.kind === 'week' ? ' week plan' + (a.auto ? ' (nightly)' : '') : ' asked for ' + a.date + ' (' + (a.slots || '?') + ' slots)'));
     try {
       await write(uid, ref, Object.assign({}, a, { state: 'working', pickedAt: Date.now() }));
-      const out = await buildPull(7);
-      const p = await askClaude(fitPrompt(out, a));
-      (p.ops || []).forEach(o => { if (o.op && !o.op.date) o.op.date = a.date; });
-      const n = await proposeObj(p);
+      let n;
+      if (a.kind === 'week') n = await planWeek();
+      else {
+        const out = await buildPull(7);
+        const p = await askClaude(fitPrompt(out, a));
+        (p.ops || []).forEach(o => { if (o.op && !o.op.date) o.op.date = a.date; });
+        n = await proposeObj(p);
+      }
       await write(uid, ref, Object.assign({}, a, { state: 'done', n, doneAt: Date.now() }));
       console.log(stamp() + ' sent ' + n + ' ideas in ' + Math.round((Date.now() - t0) / 1000) + 's');
     } catch (e) {
@@ -287,6 +336,7 @@ async function status() {
     else if (cmd === 'undo') await undo();
     else if (cmd === 'status') await status();
     else if (cmd === 'watch') await watch();
+    else if (cmd === 'week') { const n = await planWeek(a1 === '--dry'); if (a1 !== '--dry') console.log('Sent ' + n + ' to the inbox.'); }
     else if (cmd === 'ideas') { const p = await askClaude(fitPrompt(await buildPull(7), { date: a1 || today(), slots: 3 })); console.log(JSON.stringify(p, null, 1)); }
     else if (cmd === 'uid') { if (!a1) die('usage: uid <id>'); writeConf(Object.assign(readConf(), { uid: a1 })); console.log('uid saved'); }
     else console.log(fs.readFileSync(__filename, 'utf8').split('*/')[0]);

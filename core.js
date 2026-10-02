@@ -53,7 +53,7 @@ function seedConfig() {
   const cfg = {
     v: 1, updated: 0,
     settings: {
-      dayStart: 360, dayEnd: 1410, bedtime: 1350, buffer: 0.2, sound: true, theme: 'system',
+      dayStart: 360, dayEnd: 1410, bedtime: 1350, buffer: 0.2, sound: true, theme: 'system', weekPlanAt: 1290, // Saarthi plans the week each night (null = off)
       balance: { goal: 30, hobby: 15, leisure: 15, family: 25, health: 15 },
     },
     types: clone(SEED_TYPES),

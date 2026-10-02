@@ -114,10 +114,10 @@ document.addEventListener('dbx-inbox', e => { INBOX = e.detail || null; renderNa
 document.addEventListener('dbx-ask', e => {
   const prev = ASK; ASK = e.detail || null;
   if (ASK && prev && prev.at === ASK.at && prev.state !== ASK.state) {
-    if (ASK.state === 'done') toast('Saarthi sent ' + (ASK.n || 0) + ' idea' + (ASK.n === 1 ? '' : 's') + '.');
+    if (ASK.state === 'done') toast(ASK.kind === 'week' ? 'Week plan ready: ' + (ASK.n || 0) + ' blocks to accept in Saarthi.' : 'Saarthi sent ' + (ASK.n || 0) + ' idea' + (ASK.n === 1 ? '' : 's') + '.');
     else if (ASK.state === 'error') toast('Saarthi failed: ' + (ASK.error || 'unknown'), null, null, 9000);
   }
-  if (VIEW === 'today') render();
+  if (VIEW === 'today' || VIEW === 'saarthi') render();
 });
 document.addEventListener('dbx-watcher', e => { const was = saAlive(); WATCH = e.detail || null; if (was !== saAlive() && VIEW === 'today') render(); });
 document.addEventListener('dbx-tenfold', e => { TF = e.detail; syncTfCats(); if (['bank', 'insights', 'today'].includes(VIEW)) render(); });
@@ -1089,6 +1089,13 @@ function opLabel(o) { return o.label || (o.op && o.op.type) || 'change'; }
 function viewSaarthi() {
   let body = '<div class="card"><h3>How Saarthi works</h3><ol class="small" style="margin:0;padding-left:18px"><li>On your laptop, open Claude Code and type <b>/saarthi</b> (or <b>/saarthi evening</b>, <b>/saarthi week</b>).</li><li>Saarthi reads your DayBox days plus your Tenfold goals and sanyam (read-only), and tells you what to change and why.</li><li>Its exact suggestions land here. Nothing changes until you accept. You can also say "ok 1,3" in Claude Code.</li><li>No API key and no extra money: it runs on your Claude plan.</li></ol></div>';
   if (!AUTH.signedIn) body += '<div class="empty" style="margin-top:14px">Sign in to receive Saarthi suggestions.<div style="margin-top:10px"><button class="btn pri" data-act="signin">Sign in with Google</button></div></div>';
+  if (AUTH.signedIn) {
+    const busy = ASK && ASK.kind === 'week' && (ASK.state === 'asked' || ASK.state === 'working') && Date.now() - ASK.at < 5 * 60e3;
+    body += '<div class="card" style="margin-top:14px"><div class="row"><div style="flex:1"><h3 style="margin:0">Week plan</h3><div class="muted small">Saarthi fills tomorrow to Sunday (all of next week on a Sunday) from how the week is going: goals behind, nuggets left, balance, non goals.'
+      + (CFG.settings.weekPlanAt != null ? ' Every night at ' + hm(CFG.settings.weekPlanAt) + '.' : ' Nightly run is off (Settings).') + '</div></div>'
+      + (saAlive() ? '<button class="btn pri sm" data-act="weekask"' + (busy ? ' disabled' : '') + '>' + (busy ? 'Planning...' : 'Plan my week now') + '</button>' : '<span class="muted small">Start <span class="mono">saarthi.js watch</span> on your PC</span>') + '</div></div>';
+  }
+  if (!AUTH.signedIn) { /* sign-in card above */ }
   else if (!INBOX || !INBOX.ops) body += '<div class="empty" style="margin-top:14px">No suggestions yet. Run /saarthi in Claude Code.</div>';
   else {
     body += '<div class="card inbox" style="margin-top:14px"><div class="row" style="margin-bottom:8px"><h3 style="margin:0">' + esc(INBOX.title || 'Suggestions') + '</h3><span class="muted small">' + (INBOX.at ? new Date(INBOX.at).toLocaleString() : '') + '</span>' + (pendingOps() > 1 ? '<button class="btn sm pri" data-act="opall" style="margin-left:auto">Accept all</button>' : '') + '</div>'
@@ -1162,7 +1169,9 @@ function viewSettings() {
     + '<div class="grid2" style="margin-top:12px"><label class="field"><span>Free buffer</span><select data-s="buffer">' + [0.1, 0.15, 0.2, 0.25, 0.3].map(v => '<option value="' + v + '"' + (Math.abs(v - s.buffer) < 1e-9 ? ' selected' : '') + '>' + Math.round(v * 100) + '% stays free</option>').join('') + '</select></label>'
     + '<label class="field"><span>Theme</span><select data-s="theme">' + [['system', 'Same as device'], ['light', 'Light'], ['dark', 'Dark']].map(([v, l]) => '<option value="' + v + '"' + (s.theme === v ? ' selected' : '') + '>' + l + '</option>').join('') + '</select></label></div>'
     + '<div class="row" style="margin-top:12px"><label class="check"><input type="checkbox" data-s="sound"' + (s.sound ? ' checked' : '') + '> Bell sound when a block starts and ends</label><button class="btn sm" data-act="notify">Allow pop-up alerts</button></div>'
-    + '<p class="hint">Alerts only ring while DayBox is open in a tab (or on your phone home screen).</p></div>'
+    + '<p class="hint">Alerts only ring while DayBox is open in a tab (or on your phone home screen).</p>'
+    + '<div class="row" style="margin-top:12px"><label class="check"><input type="checkbox" id="wpOn"' + (s.weekPlanAt != null ? ' checked' : '') + '> Saarthi plans the rest of the week each night at</label><input type="time" step="900" id="wpAt" value="' + hm(s.weekPlanAt != null ? s.weekPlanAt : 1290) + '"' + (s.weekPlanAt != null ? '' : ' disabled') + '></div>'
+    + '<p class="hint">Runs on your PC while <span class="mono">saarthi.js watch</span> is on. The plan lands in Saarthi for you to accept.</p></div>'
     + '<div class="card"><h3>Backup</h3><div class="row"><button class="btn" data-act="export">Export backup (JSON)</button><label class="btn">Import backup or routine<input type="file" accept=".json,application/json" id="impFile" hidden></label><button class="btn" data-act="csv">Export CSV</button></div><p class="hint">Import replaces templates, routine, bank and settings, and adds any days in the file. Use it once for <b>my-routine.json</b>.</p></div>'
     + '</div><div>' + typeCard() + catCard()
     + '<div class="card"><h3>About</h3><p class="small" style="margin:0">DayBox v1 · Data: Firebase <span class="mono">planner/</span> (yours only). Tenfold is read, never written.</p></div></div></div>';
@@ -1191,6 +1200,8 @@ function viewSettings() {
       $('#typeAdd').onclick = () => { const n = $('#typeNew').value.trim(); if (!n) { $('#typeNew').focus(); return; } X.addType(CFG, n); saveCfg(); render(); };
       $('#typeNew').onkeydown = e => { if (e.key === 'Enter') $('#typeAdd').click(); };
       $('#catNew').onkeydown = e => { if (e.key === 'Enter') $('#catAdd').click(); };
+      const wpSave = () => { CFG.settings.weekPlanAt = $('#wpOn').checked ? toMin($('#wpAt').value) : null; saveCfg(); render(); };
+      $('#wpOn').onchange = wpSave; $('#wpAt').onchange = wpSave;
       $('#impFile').onchange = e => { const f = e.target.files[0]; if (f) importFile(f); e.target.value = ''; };
     },
   };
@@ -1316,6 +1327,11 @@ const ACTS = {
     const slots = FIT_MAX - (d.todo || []).length; if (slots <= 0) return toast(FIT_MAX + ' is the limit for a day.');
     ASK = { at: Date.now(), date: d.date, slots, state: 'asked' }; render();
     DBXFB.pushAsk(ASK).then(() => toast('Asked Saarthi. Ideas in about a minute.')).catch(e => { ASK = null; render(); toast('Could not ask: ' + e.message); });
+  },
+  weekask: () => {
+    if (!window.DBXFB || !DBXFB.uid) return;
+    ASK = { at: Date.now(), kind: 'week', state: 'asked' }; render();
+    DBXFB.pushAsk(ASK).then(() => toast('Asked Saarthi to plan your week. About 2 minutes.')).catch(e => { ASK = null; render(); toast('Could not ask: ' + e.message); });
   },
   sugmore: () => { SUGS.forEach(x => SUG_SEEN.add(x.item.id)); render(); },
   sughide: a => { const d = AG_DAY; if (!d) return; d.sugHide = (d.sugHide || []).concat(a.dataset.id); saveDay(d); render(); },
