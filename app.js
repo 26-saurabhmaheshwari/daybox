@@ -577,11 +577,13 @@ function cellFactory(d, big, join) {
     const locked = isMarked(b) && !UNLOCKED.has(b.id);
     const drag = big && !locked && !b.pillar && (st === 'up' || st === 'now' || st === 'mark');
     let inner = '';
-    if (o.first) inner = (o.title ? '<span class="ck-t">' + esc(b.title) + '</span>' : '') + (o.time ? '<span class="ck-m">' + hm(b.start) + '</span>' : '');
-    else { cls += ' cont'; if (o.title) inner = '<span class="ck-t cont">' + esc(b.title) + '</span>'; }
+    // its small things (e.g. SRM Study 20 min, the idea of the day) show on the block, not only in the editor
+    const att = X.attachObjs(b.attach).map(a => (a.done ? '✓ ' : '') + a.t).join(' · ');
+    if (o.first) inner = (o.title ? '<span class="ck-t">' + esc(b.title) + (big && att ? '<small class="ck-a"> · ' + esc(att) + '</small>' : '') + '</span>' : '') + (o.time ? '<span class="ck-m">' + hm(b.start) + '</span>' : '');
+    else { cls += ' cont'; if (o.title) inner = '<span class="ck-t cont">' + esc(big && att ? att : b.title) + '</span>'; }
     if (o.tick && o.first && (st === 'done' || st === 'mark')) inner += '<i class="ck-i">' + (st === 'done' ? '✓' : '!') + '</i>';
     return '<div class="' + cls + ' st-' + st + (o.first ? ' first' : '') + (drag ? ' drag' : '') + '" data-m="' + m + '" data-id="' + b.id + '" style="--k:' + c.color + (sty || '') + '"'
-      + (drag ? ' data-drag="blk:' + b.id + '" data-label="' + esc(b.title) + '"' : '') + ' title="' + esc(b.title) + ' ' + hm(b.start) + '–' + hm(b.start + b.dur) + '">' + inner + (o.nl || '') + '</div>';
+      + (drag ? ' data-drag="blk:' + b.id + '" data-label="' + esc(b.title) + '"' : '') + ' title="' + esc(b.title + ' ' + hm(b.start) + '–' + hm(b.start + b.dur) + (att ? ': ' + att : '')) + '">' + inner + (o.nl || '') + '</div>';
   };
   // span: 2 when one block fills both halves of the hour (cells merge into one wide bar)
   const cell = (m, pm, span) => {
