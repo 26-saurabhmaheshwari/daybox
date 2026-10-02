@@ -187,7 +187,7 @@ function render() {
   const gw = $('.gwrap'); const sl = gw ? gw.scrollLeft : 0, st = gw ? gw.scrollTop : 0, gid = gw ? gw.id : null;
   const fn = { today: viewToday, week: viewWeek, plan: viewPlan, bank: viewBank, routine: viewRoutine, insights: viewInsights, saarthi: viewSaarthi, settings: viewSettings }[VIEW] || viewToday;
   const r = fn();
-  $('#top').innerHTML = '<h1>' + r.title + (r.sub ? '<span class="sub">' + r.sub + '</span>' : '') + '</h1><div class="tact row">' + (r.actions || '') + '</div>';
+  $('#top').innerHTML = '<h1>' + r.title + (r.sub ? '<span class="sub">' + r.sub + '</span>' : '') + '</h1>' + (r.mid ? '<div class="tmid">' + r.mid + '</div>' : '') + '<div class="tact row">' + (r.actions || '') + '</div>';
   $('#view').innerHTML = r.body;
   const gw2 = $('.gwrap'); if (gw2 && gw2.id === gid) { gw2.scrollLeft = sl; gw2.scrollTop = st; }
   r.after && r.after();
@@ -682,7 +682,8 @@ function viewToday() {
   let top = '';
   if (!localStorage.getItem(LS_ONB)) top += '<div class="card inbox" style="margin-bottom:12px"><h3>Welcome to DayBox</h3><ol class="small" style="margin:0 0 10px;padding-left:18px"><li>Sign in with Google (the same account as Tenfold) so it syncs to your phone.</li><li>When a block ends, tap ✓ or ✗. That is all the logging.</li><li>Bored or free? Press <b>What now?</b></li></ol><div class="row"><button class="btn pri sm" data-act="signin">Sign in</button><button class="btn ghost sm" data-act="onb">Got it</button></div></div>';
   const statTxt = d.untracked ? '' : (sc.past ? '<span><b>' + sc.marked + '/' + sc.past + '</b>marked</span>' : '') + (pil.pillarsPlanned ? '<span><b>' + pil.pillarsKept + '/' + pil.pillarsPlanned + '</b>pillars</span>' : '') + '<span><b>' + durTxt(free) + '</b>free</span>';
-  if (isToday) top += nowBarHtml(d, statTxt);
+  // the now bar lives in the header row, between the date and the buttons
+  const mid = isToday ? nowBarHtml(d, (pil.pillarsPlanned ? '<span><b>' + pil.pillarsKept + '/' + pil.pillarsPlanned + '</b>pillars</span>' : '') + '<span><b>' + durTxt(free) + '</b>free</span>') : '';
   if (isToday && pendingOps()) top += '<div class="al" style="margin-bottom:10px">' + ic('saarthi', 's-ic') + '<span>Saarthi has <b>' + pendingOps() + '</b> suggestions.</span><button class="btn sm x" data-act="nav" data-v="saarthi">Open</button></div>';
   if (yday && yday.close && yday.close.mit && isToday) top += '<div class="al" style="margin-bottom:10px">★ <span>Today\'s MIT (from last night): <b>' + esc(yday.close.mit) + '</b></span></div>';
   if (d.untracked) top += '<div class="untracked">' + ic('lock', 's-ic') + '<span>Not tracked. DayBox was not used this day.</span><button class="btn sm" data-act="track-empty">Add what happened</button><button class="btn sm" data-act="track-routine">Fill from routine</button></div>';
@@ -704,7 +705,7 @@ function viewToday() {
   const clock = d.untracked ? '' : '<div class="panel" id="dayClock" data-date="' + CUR + '"><div class="ph"><h3>' + (isToday ? 'Your day' : past ? 'That day' : 'Plan for ' + fmtShort(CUR)) + '</h3>' + clockLegend() + '</div>' + partsHtml(d) + '</div>';
   const body = top + clock + fit;
   return {
-    title: dnav, sub: '', actions, body,
+    title: dnav, sub: '', mid, actions, body,
     after() { bindDrag(); },
   };
 }
